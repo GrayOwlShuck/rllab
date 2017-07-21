@@ -52,6 +52,12 @@ if __name__ == "__main__":
                         help='path to the scale and bias ')
     parser.add_argument('--id', type=int, default=1,
                         help='ID of pickle file')
+    parser.add_argument('--animated', type=int, default=0,
+                        help='whether or not to animate')
+    parser.add_argument('--save_video', type=int, default=1,
+                        help='whether or not to save video (only happens if animate=1)')
+    parser.add_argument('--distractor', type=int, default=0,
+                        help='include distractor in environment')
     args = parser.parse_args()
 
     demo_info = pickle.load(open('data/expert_demos_filter_rew32_jnt7e-1_tries12/'+str(args.id)+'.pkl', 'rb'))
@@ -61,9 +67,11 @@ if __name__ == "__main__":
 
     suffix = xml_filepath[xml_filepath.index('pusher'):]
     prefix = '/home/cfinn/code/rllab/vendor/local_mujoco_models/'
+    if args.distractor:
+        prefix += 'distractor_'
     xml_filepath = str(prefix + suffix)
 
-    pusher_env = PusherEnv(**{'xml_file':xml_filepath})
+    pusher_env = PusherEnv(**{'xml_file':xml_filepath, 'distractors': bool(args.distractor)})
     env = TfEnv(normalize(pusher_env))
     import pdb; pdb.set_trace()
 
@@ -73,7 +81,7 @@ if __name__ == "__main__":
         returns = []
         while True:
             path = rollout(env, policy, max_path_length=100, #args.max_path_length,
-                           animated=False, speedup=1, always_return_paths=True)
+                           animated=bool(args.animated), speedup=1, always_return_paths=True, save_video=bool(args.save_video))
             print('Return: '+str(path['rewards'].sum()))
             returns.append(path['rewards'].sum())
             print('Average Return so far: ' + str(np.mean(returns)))

@@ -10,6 +10,8 @@ import numpy as np
 
 from shutil import copyfile, copy2
 
+GYM_PATH = '/home/cfinn/code/gym'
+
 # find the max dimensions, so we can know the bounding box, getting the height,
 # width, length (because these are the step size)...
 def find_mins_maxs(obj):
@@ -31,36 +33,6 @@ def find_mins_maxs(obj):
             maxz = max(p[stl.Dimension.Z], maxz)
             minz = min(p[stl.Dimension.Z], minz)
     return minx, maxx, miny, maxy, minz, maxz
-
-def default_model(name, regen_fn=None):
-    """
-    Get a model with basic settings such as gravity and RK4 integration enabled
-    """
-    model = MJCModelRegen(name, regen_fn)
-    root = model.root
-
-    # Setup
-    root.compiler(angle="radian", inertiafromgeom="true")
-    default = root.default()
-    default.joint(armature=1, damping=1, limited="true")
-    default.geom(contype=0, friction='1 0.1 0.1', rgba='0.7 0.7 0 1')
-    root.option(gravity="0 0 -9.81", integrator="RK4", timestep=0.01)
-    return model
-
-def pointmass_model(name):
-    """
-    Get a model with basic settings such as gravity and Euler integration enabled
-    """
-    model = MJCModel(name)
-    root = model.root
-
-    # Setup
-    root.compiler(angle="radian", inertiafromgeom="true", coordinate="local")
-    default = root.default()
-    default.joint(limited="false", damping=1)
-    default.geom(contype=2, conaffinity="1", condim="1", friction=".5 .1 .1", density="1000", margin="0.002")
-    root.option(timestep=0.01, gravity="0 0 0", iterations="20", integrator="Euler")
-    return model
 
 
 class MJCModel(object):
@@ -162,20 +134,20 @@ def pusher(obj_scale=None,obj_mass=None,obj_damping=None,object_pos=(0.45, -0.05
     # For now, only supports one distractor
 
     if obj_scale is None:
-        obj_scale = random.uniform(0.5, 1.0)  # currently trying range of 0.5-1.0
+        obj_scale = random.uniform(0.5, 1.0)
     if obj_mass is None:
-        obj_mass = random.uniform(0.1, 2.0)  # largest is 2.0, lowest is 0.1 I think
+        obj_mass = random.uniform(0.1, 2.0)
     if obj_damping is None:
-        obj_damping = random.uniform(0.2, 5.0) # This is friction. ranges between 0.2 and 5.0
+        obj_damping = random.uniform(0.2, 5.0)
     obj_damping = str(obj_damping)
 
     if distractor_mesh_file:
         if distr_scale is None:
-            distr_scale = random.uniform(0.5, 1.0)  # currently trying range of 0.5-1.0
+            distr_scale = random.uniform(0.5, 1.0)
         if distr_mass is None:
-            distr_mass = random.uniform(0.1, 2.0)  # largest is 2.0, lowest is 0.1 I think
+            distr_mass = random.uniform(0.1, 2.0)
         if distr_damping is None:
-            distr_damping = random.uniform(0.2, 5.0) # This is friction. ranges between 0.2 and 5.0
+            distr_damping = random.uniform(0.2, 5.0)
         distr_damping = str(distr_damping)
 
 
@@ -186,12 +158,14 @@ def pusher(obj_scale=None,obj_mass=None,obj_damping=None,object_pos=(0.45, -0.05
     default.joint(armature='0.04', damping=1, limited='true')
     default.geom(friction=friction,density="300",margin="0.002",condim="1",contype="0",conaffinity="0")
 
+    # Make table
     worldbody = mjcmodel.root.worldbody()
     worldbody.light(diffuse=".5 .5 .5", pos="0 0 3", dir="0 0 -1")
     if table_texture:
         worldbody.geom(name="table", material='table', type="plane", pos="0 0.5 -0.325", size="1 1 0.1", contype="1", conaffinity="1")
     else:
         worldbody.geom(name="table", type="plane", pos="0 0.5 -0.325", size="1 1 0.1", contype="1", conaffinity="1")
+    # Make arm
     r_shoulder_pan_link = worldbody.body(name="r_shoulder_pan_link", pos="0 -0.6 0")
     r_shoulder_pan_link.geom(name="e1", type="sphere", rgba="0.6 0.6 0.6 1", pos="-0.06 0.05 0.2", size="0.05")
     r_shoulder_pan_link.geom(name="e2", type="sphere", rgba="0.6 0.6 0.6 1", pos=" 0.06 0.05 0.2", size="0.05")
@@ -227,6 +201,7 @@ def pusher(obj_scale=None,obj_mass=None,obj_damping=None,object_pos=(0.45, -0.05
     r_wrist_roll_link.geom(type="capsule", fromto="0 -0.1 0. 0.1 -0.1 0", size="0.02", contype="1", conaffinity="1")
     r_wrist_roll_link.geom(type="capsule", fromto="0 +0.1 0. 0.1 +0.1 0", size="0.02", contype="1", conaffinity="1")
 
+    # Process object physical properties
     if mesh_file is not None:
         mesh_object = mesh.Mesh.from_file(mesh_file)
         vol, cog, inertia = mesh_object.get_mass_properties()
@@ -251,40 +226,30 @@ def pusher(obj_scale=None,obj_mass=None,obj_damping=None,object_pos=(0.45, -0.05
 
     ## MAKE DISTRACTOR
     if distractor_mesh_file:
-        distractor = worldbody.body(name="distractor", pos=distractor_pos)#"0.45 -0.05 -0.275")
-        #distractor.geom(rgba="1 1 1 0", type="sphere", size="0.05 0.05 0.05", density="0.00001", conaffinity="0")
+        distractor = worldbody.body(name="distractor", pos=distractor_pos)
         if distractor_mesh_file is None:
             distractor.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
         else:
-            # mesh = distractor.body(axisangle="1 0 0 1.57", pos="0 0 0") # axis angle might also need to be adjusted
-            # TODO: do we need material here?
             if distractor_texture:
                 distractor.geom(material='distractor', conaffinity="0", contype="1", density=str(distr_density), mesh="distractor_mesh" , rgba="1 1 1 1", type="mesh")
             else:
                 distractor.geom(conaffinity="0", contype="1", density=str(distr_density), mesh="distractor_mesh" , rgba="1 1 1 1", type="mesh")
-            # distal = mesh.body(name="distal_10_%d" % i, pos="0 0 0")
-            # distal.site(name="distractor_pos_%d" % i, pos="0 0 0", size="0.01")
         distractor.joint(name="distractor_slidey", type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping=distr_damping)
         distractor.joint(name="distractor_slidex", type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping=distr_damping)
 
     # MAKE TARGET OBJECT
-    object = worldbody.body(name="object", pos=object_pos)#"0.45 -0.05 -0.275")
-    # object.geom(rgba="1 1 1 0", type="sphere", size="0.05 0.05 0.05", density="0.00001", conaffinity="0")
+    obj = worldbody.body(name="object", pos=object_pos)
     if mesh_file is None:
-        object.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
+        obj.geom(rgba="1 1 1 1", type="cylinder", size="0.05 0.05 0.05", density="0.00001", contype="1", conaffinity="0")
     else:
-        # mesh = object.body(axisangle="1 0 0 1.57", pos="0 0 0") # axis angle might also need to be adjusted
-        # TODO: do we need material here?
         if obj_texture:
-            object.geom(material='object', conaffinity="0", contype="1", density=str(object_density), mesh="object_mesh", rgba="1 1 1 1", type="mesh")
+            obj.geom(material='object', conaffinity="0", contype="1", density=str(object_density), mesh="object_mesh", rgba="1 1 1 1", type="mesh")
         else:
-            object.geom(conaffinity="0", contype="1", density=str(object_density), mesh="object_mesh", rgba="1 1 1 1", type="mesh")
-        # distal = mesh.body(name="distal_10", pos="0 0 0")
-        # distal.site(name="obj_pos", pos="0 0 0", size="0.01")
-    object.joint(name="obj_slidey", type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping=obj_damping)
-    object.joint(name="obj_slidex", type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping=obj_damping)
+            obj.geom(conaffinity="0", contype="1", density=str(object_density), mesh="object_mesh", rgba="1 1 1 1", type="mesh")
+    obj.joint(name="obj_slidey", type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping=obj_damping)
+    obj.joint(name="obj_slidex", type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping=obj_damping)
 
-    goal = worldbody.body(name="goal", pos=goal_pos)#"0.45 -0.05 -0.3230")
+    goal = worldbody.body(name="goal", pos=goal_pos)
     goal.geom(rgba="1 0 0 1", type="cylinder", size="0.08 0.001 0.1", density='0.00001', contype="0", conaffinity="0")
     goal.joint(name="goal_slidey", type="slide", pos="0 0 0", axis="0 1 0", range="-10.3213 10.3", damping="0.5")
     goal.joint(name="goal_slidex", type="slide", pos="0 0 0", axis="1 0 0", range="-10.3213 10.3", damping="0.5")
@@ -362,21 +327,16 @@ if __name__ == '__main__':
             print(mass)
             print(damp)
             model = pusher(mesh_file=obj,mesh_file_path=obj, obj_scale=scale,obj_mass=mass,obj_damping=damp)
-            model.save('/home/cfinn/code/gym/gym/envs/mujoco/assets/pusher.xml')
+            model.save(GYM_PATH+'/gym/envs/mujoco/assets/pusher.xml')
         else:
-            copyfile(xml_file, '/home/cfinn/code/gym/gym/envs/mujoco/assets/pusher.xml')
+            copyfile(xml_file, GYM_PATH + '/gym/envs/mujoco/assets/pusher.xml')
     else:
         # TODO - could call code to autogenerate xml file here
         model = pusher(mesh_file=args.obj_filepath, mesh_file_path=args.obj_filepath)
-        model.save('/home/cfinn/code/gym/gym/envs/mujoco/assets/pusher.xml')
+        model.save(GYM_PATH + '/gym/envs/mujoco/assets/pusher.xml')
 
-    # Copy xml file to gym xml location
-    #if args.xml_filepath != 'None':
-    #    copyfile(args.xml_filepath, '/home/cfinn/code/gym/gym/envs/mujoco/assets/pusher.xml')
-    #else:
-    #    model.save('/home/cfinn/code/gym/gym/envs/mujoco/assets/pusher.xml')
     if args.obj_filepath != 'None':
-        copy2(args.obj_filepath, '/home/cfinn/code/gym/gym/envs/mujoco/assets')
+        copy2(args.obj_filepath, GYM_PATH+'/gym/envs/mujoco/assets')
 
     env = gym.envs.make('Pusher-v0')
     for _ in range(100000):

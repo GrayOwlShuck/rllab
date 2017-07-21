@@ -63,7 +63,8 @@ class MujocoEnv(Env):
         else:
             try:
                 self.model = MjModel(file_path)
-            except rllab.mujoco_py.mjcore.MjError:
+            except rllab.mujoco_py.mjcore.MjError as err:
+                #print(err)
                 rllab_path = rllab.__file__
                 prefix = rllab_path[:rllab_path.index('rllab')] + 'rllab/vendor/local_mujoco_models/'
                 suffix = file_path[file_path.index('pusher'):]
