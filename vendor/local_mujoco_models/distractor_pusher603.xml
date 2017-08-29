@@ -1,0 +1,90 @@
+<mujoco model="arm3d">
+	<compiler inertiafromgeom="true" coordinate="local" angle="radian"/>
+	<option timestep="0.01" gravity="0 0 0" iterations="20" integrator="Euler"/>
+	<default >
+		<joint damping="1" armature="0.04" limited="true"/>
+		<geom condim="1" friction="0.8 0.1 0.1" density="300" conaffinity="0" margin="0.002" contype="0"/>
+	</default>
+	<worldbody >
+		<light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+		<geom pos="0 0.5 -0.325" type="plane" conaffinity="1" size="1 1 0.1" material="table" name="table" contype="1"/>
+		<body name="r_shoulder_pan_link" pos="0 -0.6 0">
+			<geom name="e1" pos="-0.06 0.05 0.2" type="sphere" rgba="0.6 0.6 0.6 1" size="0.05"/>
+			<geom name="e2" pos=" 0.06 0.05 0.2" type="sphere" rgba="0.6 0.6 0.6 1" size="0.05"/>
+			<geom name="e1p" pos="-0.06 0.09 0.2" type="sphere" rgba="0.1 0.1 0.1 1" size="0.03"/>
+			<geom name="e2p" pos=" 0.06 0.09 0.2" type="sphere" rgba="0.1 0.1 0.1 1" size="0.03"/>
+			<geom name="sp" fromto="0 0 -0.4 0 0 0.2" type="capsule" size="0.1"/>
+			<joint pos="0 0 0" type="hinge" range="-2.2854 1.714602" name="r_shoulder_pan_joint" damping="1.0" axis="0 0 1"/>
+			<body name="r_shoulder_lift_link" pos="0.1 0 0">
+				<geom name="sl" fromto="0 -0.1 0 0 0.1 0" type="capsule" size="0.1"/>
+				<joint pos="0 0 0" type="hinge" range="-0.5236 1.3963" name="r_shoulder_lift_joint" damping="1.0" axis="0 1 0"/>
+				<body name="r_upper_arm_roll_link" pos="0 0 0">
+					<geom name="uar" fromto="-0.1 0 0 0.1 0 0" type="capsule" size="0.02"/>
+					<joint pos="0 0 0" type="hinge" range="-1.5 1.7" name="r_upper_arm_roll_joint" damping="0.1" axis="1 0 0"/>
+					<body name="r_upper_arm_link" pos="0 0 0">
+						<geom name="ua" fromto="0 0 0 0.4 0 0" type="capsule" size="0.06"/>
+						<body name="r_elbow_flex_link" pos="0.4 0 0">
+							<geom name="ef" fromto="0 -0.02 0 0.0 0.02 0" type="capsule" size="0.06"/>
+							<joint pos="0 0 0" type="hinge" range="-2.3213 0" name="r_elbow_flex_joint" damping="0.1" axis="0 1 0"/>
+							<body name="r_forearm_roll_link" pos="0 0 0">
+								<geom name="fr" fromto="-0.1 0 0 0.1 0 0" type="capsule" size="0.02"/>
+								<joint pos="0 0 0" type="hinge" range="-1.5 1.5" limited="true" damping=".1" axis="1 0 0" name="r_forearm_roll_joint"/>
+								<body name="r_forearm_link" pos="0 0 0">
+									<geom name="fa" fromto="0 0 0 0.291 0 0" type="capsule" size="0.05"/>
+									<body name="r_wrist_flex_link" pos="0.321 0 0">
+										<geom name="wf" fromto="0 -0.02 0 0 0.02 0" type="capsule" size="0.01"/>
+										<joint pos="0 0 0" type="hinge" range="-1.094 0" name="r_wrist_flex_joint" damping=".1" axis="0 1 0"/>
+										<body name="r_wrist_roll_link" pos="0 0 0">
+											<joint pos="0 0 0" type="hinge" range="-1.5 1.5" limited="true" damping="0.1" axis="1 0 0" name="r_wrist_roll_joint"/>
+											<body name="tips_arm" pos="0 0 0">
+												<geom name="tip_arml" pos="0.1 -0.1 0." type="sphere" size="0.01"/>
+												<geom name="tip_armr" pos="0.1 0.1 0." type="sphere" size="0.01"/>
+											</body>
+											<geom fromto="0 -0.1 0. 0.0 +0.1 0" size="0.02" type="capsule" conaffinity="1" contype="1"/>
+											<geom fromto="0 -0.1 0. 0.1 -0.1 0" size="0.02" type="capsule" conaffinity="1" contype="1"/>
+											<geom fromto="0 +0.1 0. 0.1 +0.1 0" size="0.02" type="capsule" conaffinity="1" contype="1"/>
+										</body>
+									</body>
+								</body>
+							</body>
+						</body>
+					</body>
+				</body>
+			</body>
+		</body>
+		<body name="distractor" pos="0.461700620659 -0.00169027091851 -0.323999999137">
+			<geom type="mesh" conaffinity="0" mesh="distractor_mesh" material="distractor" density="3053.75381347" rgba="1 1 1 1" contype="1"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="distractor_slidey" damping="4.285048122132126" axis="0 1 0"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="distractor_slidex" damping="4.285048122132126" axis="1 0 0"/>
+		</body>
+		<body name="object" pos="0.450006473613 -0.05 -0.324">
+			<geom type="mesh" conaffinity="0" mesh="object_mesh" material="object" density="820.321729965" rgba="1 1 1 1" contype="1"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="obj_slidey" damping="1.7111260252753622" axis="0 1 0"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="obj_slidex" damping="1.7111260252753622" axis="1 0 0"/>
+		</body>
+		<body name="goal" pos="0.45 -0.05 -0.323">
+			<geom type="cylinder" conaffinity="0" size="0.08 0.001 0.1" density="0.00001" rgba="1 0 0 1" contype="0"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="goal_slidey" damping="0.5" axis="0 1 0"/>
+			<joint pos="0 0 0" type="slide" range="-10.3213 10.3" name="goal_slidex" damping="0.5" axis="1 0 0"/>
+		</body>
+	</worldbody>
+	<asset >
+		<texture file="/home/cfinn/code/rllab/vendor/textures/table_textures/wpic_042.png" name="table" type="2d"/>
+		<material name="table" specular="1" rgba="0.9 0.9 0.9 1" texture="table" shininess="0.3"/>
+		<mesh file="/home/cfinn/code/rllab/vendor/mujoco_models/Thumb_Screw.stl" name="object_mesh" scale="0.0170447576887 0.0170447576887 0.0170447576887"/>
+		<mesh file="/home/cfinn/code/rllab/vendor/mujoco_models/Love_Box_1.stl" name="distractor_mesh" scale="0.00241548645407 0.00241548645407 0.00241548645407"/>
+		<texture file="/home/cfinn/code/rllab/vendor/textures/obj_textures/paisley_0091.png" name="distractor"/>
+		<material name="distractor" specular="1" rgba="0.9 0.9 0.9 1" texture="distractor" shininess="0.3"/>
+		<texture file="/home/cfinn/code/rllab/vendor/textures/obj_textures/wrinkled_0116.png" name="object"/>
+		<material name="object" specular="1" rgba="0.9 0.9 0.9 1" texture="object" shininess="0.3"/>
+	</asset>
+	<actuator >
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_shoulder_pan_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_shoulder_lift_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_upper_arm_roll_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_elbow_flex_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_forearm_roll_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_wrist_flex_joint"/>
+		<motor ctrlrange="-2.0 2.0" ctrllimited="true" joint="r_wrist_roll_joint"/>
+	</actuator>
+</mujoco>
