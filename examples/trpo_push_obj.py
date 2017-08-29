@@ -38,14 +38,6 @@ variants = VG().variants()
 
 def run_task(v):
 
-    #random.seed(v['seed'])
-    #objs = glob.glob(DOCKER_CODE_DIR+'vendor/mujoco_models/*.stl')
-    #random_obj = random.choice(objs)
-    #random_scale = random.uniform(0.5, 1.0)
-    #random_mass = random.uniform(0.1, 2.0)
-    #random_damp = random.uniform(0.2, 5.0)
-    # Log experiment info
-    #exp_log_info = {'obj': random_obj, 'scale': random_scale, 'mass': random_mass, 'damp': random_damp}
 
     #pusher_model = pusher(mesh_file=random_obj, obj_scale=random_scale,obj_mass=random_mass,obj_damping=random_damp)
     #xml_filepath = DOCKER_CODE_DIR+'pusher.xml'  # Put it in exp dir, not here.

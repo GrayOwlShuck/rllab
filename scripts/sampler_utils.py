@@ -41,18 +41,26 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
             if viewer == None:
                 env.render()
                 viewer = env.viewer
-                print('hi')
                 #import pdb; pdb.set_trace()
         else:
             viewer = env.wrapped_env.wrapped_env.get_viewer()
         viewer.autoscale()
+        # new viewpoint
         viewer.cam.trackbodyid = -1
-        viewer.cam.lookat[0] = 0.3 # more positive moves the dot left
-        viewer.cam.lookat[1] = -0.3 # more positive moves the dot down
+        viewer.cam.lookat[0] = 0.4 # more positive moves the dot left
+        viewer.cam.lookat[1] = -0.1 # more positive moves the dot down
         viewer.cam.lookat[2] = 0.0
-        viewer.cam.distance = 1.3
-        viewer.cam.elevation = -90
-        viewer.cam.azimuth = 90
+        viewer.cam.distance = 0.75
+        viewer.cam.elevation = -50
+        viewer.cam.azimuth = -90
+
+        #viewer.cam.trackbodyid = -1
+        #viewer.cam.lookat[0] = 0.3 # more positive moves the dot left
+        #viewer.cam.lookat[1] = -0.3 # more positive moves the dot down
+        #viewer.cam.lookat[2] = 0.0
+        #viewer.cam.distance = 1.3
+        #viewer.cam.elevation = -90
+        #viewer.cam.azimuth = 90
         env.render()
     if vision:
         image_obses = []
@@ -64,7 +72,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
     path_length = 0
     while path_length < max_path_length:
         if vision and 'get_vision_action' in dir(agent):
-            a, agent_info = agent.get_vision_action(image_obs, nonimage_obs)
+            a, agent_info = agent.get_vision_action(image_obs, nonimage_obs, t=path_length)
         else:
             a, agent_info = agent.get_action(o)
 
