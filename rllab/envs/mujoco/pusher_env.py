@@ -31,6 +31,7 @@ class PusherEnv(MujocoEnv, Serializable):
             self.model.data.qpos.flat[:7],
             self.model.data.qvel.flat[:7],
             self.get_body_com("tips_arm"),
+            self.get_body_com("distractor"),
             self.get_body_com("object"),
             self.get_body_com("goal"),
         ])
@@ -94,8 +95,6 @@ class PusherEnv(MujocoEnv, Serializable):
         self.model._compute_subtree()
         self.model.forward()
 
-        #self.reset_mujoco(init_state)
-        #self.model.forward()
         self.current_com = self.model.data.com_subtree[0]
         self.dcom = np.zeros_like(self.current_com)
         return self.get_current_obs()

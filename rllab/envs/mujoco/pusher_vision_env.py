@@ -44,6 +44,7 @@ class PusherVisionEnv(MujocoEnv, Serializable):
             self.model.data.qpos.flat[:7],
             self.model.data.qvel.flat[:7],
             self.get_body_com("tips_arm"),
+            self.get_body_com("distractor"),
             self.get_body_com("object"),
             self.get_body_com("goal"),
         ])
@@ -84,9 +85,19 @@ class PusherVisionEnv(MujocoEnv, Serializable):
         return Step(next_obs, reward, done)
 
     @overrides
-    def reset(self, init_state=None, init_arm_only=False):
+    def reset(self, init_state=None, init_arm_only=False, left=None):
         self.frame_skip = 5
         qpos = self.init_qpos.copy()
+        if left is not None:
+            if left:
+                ylow = -0.2
+                yhigh = 0
+            else:
+                ylow = 0
+                yhigh = 0.2
+        else:
+            ylow = -0.2
+            yhigh = 0.2
 
         if not init_arm_only:
             self.goal_pos = np.asarray([0, 0])
@@ -94,7 +105,7 @@ class PusherVisionEnv(MujocoEnv, Serializable):
             while True:
                 self.obj_pos = np.concatenate([
                         np.random.uniform(low=-0.3, high=0, size=1),
-                        np.random.uniform(low=-0.2, high=0.2, size=1)])
+                        np.random.uniform(low=ylow, high=yhigh, size=1)])
                 if np.linalg.norm(self.obj_pos - self.goal_pos) > 0.17:
                     break
 

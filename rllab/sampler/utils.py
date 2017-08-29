@@ -23,7 +23,7 @@ def stack_tensor_list(tensor_list):
     return np.array(tensor_list)
 
 def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
-            always_return_paths=False, env_reset=True, save_video=True, video_filename='sim_out.mp4', vision=False):
+            always_return_paths=False, env_reset=True, save_video=True, video_filename='sim_out.mp4', vision=False, left=None):
     observations = []
     actions = []
     rewards = []
@@ -31,9 +31,10 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
     env_infos = []
     images = []
     if env_reset:
-        o = env.reset()
+        #o = env.reset()
+        o = env.wrapped_env.wrapped_env.reset(left=left)
     else:
-        o = env.wrapped_env.wrapped_env.reset(init_arm_only=True)
+        o = env.wrapped_env.wrapped_env.reset(left=left, init_arm_only=True)
     agent.reset()
     if animated:
         if 'viewer' in dir(env):
@@ -47,13 +48,14 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
             viewer = env.wrapped_env.wrapped_env.get_viewer()
         viewer.autoscale()
         viewer.cam.trackbodyid = -1
-        viewer.cam.lookat[0] = 0.3 # more positive moves the dot left
-        viewer.cam.lookat[1] = -0.3 # more positive moves the dot down
+        viewer.cam.lookat[0] = 0.4 # more positive moves the dot left
+        viewer.cam.lookat[1] = -0.1 # more positive moves the dot down
         viewer.cam.lookat[2] = 0.0
-        viewer.cam.distance = 1.3
-        viewer.cam.elevation = -90
-        viewer.cam.azimuth = 90
+        viewer.cam.distance = 0.75
+        viewer.cam.elevation = -50
+        viewer.cam.azimuth = -90
         env.render()
+
     if vision:
         image_obses = []
         nonimage_obses = []
@@ -64,7 +66,7 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
     path_length = 0
     while path_length < max_path_length:
         if vision and 'get_vision_action' in dir(agent):
-            a, agent_info = agent.get_vision_action(image_obs, nonimage_obs)
+            a, agent_info = agent.get_vision_action(image_obs, nonimage_obs, t=path_length)
         else:
             a, agent_info = agent.get_action(o)
 
@@ -77,8 +79,9 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
 
         #observations.append(env.observation_space.flatten(o))
         observations.append(np.squeeze(o))
-        image_obses.append(image_obs)
-        nonimage_obses.append(nonimage_obs)
+        if vision:
+            image_obses.append(image_obs)
+            nonimage_obses.append(nonimage_obs)
         rewards.append(r)
         #actions.append(env.action_space.flatten(a))
         actions.append(np.squeeze(a))
@@ -88,8 +91,9 @@ def rollout(env, agent, max_path_length=np.inf, animated=False, speedup=1,
         if d:
             break
         o = next_o
-        image_obs = next_image_obs
-        nonimage_obs = next_nonimage_obs
+        if vision:
+            image_obs = next_image_obs
+            nonimage_obs = next_nonimage_obs
         if animated:
             env.render()
             timestep = 0.05

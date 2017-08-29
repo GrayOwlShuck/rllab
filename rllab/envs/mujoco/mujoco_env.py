@@ -64,10 +64,11 @@ class MujocoEnv(Env):
             try:
                 self.model = MjModel(file_path)
             except rllab.mujoco_py.mjcore.MjError as err:
-                #print(err)
                 rllab_path = rllab.__file__
-                prefix = rllab_path[:rllab_path.index('rllab')] + 'rllab/vendor/local_mujoco_models/'
-                suffix = file_path[file_path.index('pusher'):]
+                if 'local' not in file_path:
+                    prefix = rllab_path[:rllab_path.index('rllab')] + 'rllab/vendor/local_mujoco_models/'
+                suffix = file_path[file_path.index('mujoco_models')+14:]
+                #suffix = 'train_ensure_woodtable_distractor_pusher1.xml'
                 #suffix = 'pusher98.xml'
                 self.model = MjModel(prefix+suffix)
         self.data = self.model.data
