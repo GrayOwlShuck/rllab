@@ -16,13 +16,16 @@ import itertools
 
 class VectorizedDemoSampler(BaseSampler):
 
-    def __init__(self, algo, policy=None, n_envs=None):  # allows to define another policy (for demos)!
+    def __init__(self, algo, policy=None, n_envs=None, batch_size=None):  # allows to define another policy (for demos)!
         """
         :param policy: allows to define a sampling policy. uses 0 baseline!
         :param n_envs: 
         """
         super(VectorizedDemoSampler, self).__init__(algo, policy=policy)
         self.n_envs = n_envs
+        self.batch_size = batch_size
+        if batch_size is None:
+            self.batch_size = algo.batch_size
 
     def process_samples(self, itr, paths, prefix='demo_', log=True):
         # if self.policy is not self.algo.policy:
@@ -51,56 +54,37 @@ class VectorizedDemoSampler(BaseSampler):
             returns.append(path["returns"])
 
         avg_path_length = np.mean([len(path["rewards"]) for path in paths])
-        max_path_length = max([len(path["advantages"]) for path in paths])
 
-        # make all paths the same length (pad extra advantages with 0)
-        obs = [path["observations"] for path in paths]
-        obs = tensor_utils.pad_tensor_n(obs, max_path_length)
+        observations = tensor_utils.concat_tensor_list([path["observations"] for path in paths])
+        actions = tensor_utils.concat_tensor_list([path["actions"] for path in paths])
+        rewards = tensor_utils.concat_tensor_list([path["rewards"] for path in paths])
+        returns = tensor_utils.concat_tensor_list([path["returns"] for path in paths])
+        advantages = tensor_utils.concat_tensor_list([path["advantages"] for path in paths])
+        env_infos = tensor_utils.concat_tensor_dict_list([path["env_infos"] for path in paths])
+        agent_infos = tensor_utils.concat_tensor_dict_list([path["agent_infos"] for path in paths])
 
         if self.algo.center_adv:
-            raw_adv = np.concatenate([path["advantages"] for path in paths])
-            adv_mean = np.mean(raw_adv)
-            adv_std = np.std(raw_adv) + 1e-8
-            adv = [(path["advantages"] - adv_mean) / adv_std for path in paths]
-        else:
-            adv = [path["advantages"] for path in paths]
+            advantages = util.center_advantages(advantages)
 
-        adv = np.asarray([tensor_utils.pad_tensor(a, max_path_length) for a in adv])
+        if self.algo.positive_adv:
+            advantages = util.shift_advantages_to_positive(advantages)
 
-        actions = [path["actions"] for path in paths]
-        actions = tensor_utils.pad_tensor_n(actions, max_path_length)
+        average_discounted_return = \
+            np.mean([path["returns"][0] for path in paths])
 
-        rewards = [path["rewards"] for path in paths]
-        rewards = tensor_utils.pad_tensor_n(rewards, max_path_length)
-
-        returns = [path["returns"] for path in paths]
-        returns = tensor_utils.pad_tensor_n(returns, max_path_length)
-
-        agent_infos = [path["agent_infos"] for path in paths]
-        agent_infos = tensor_utils.stack_tensor_dict_list(
-            [tensor_utils.pad_tensor_dict(p, max_path_length) for p in agent_infos]
-        )
-
-        env_infos = [path["env_infos"] for path in paths]
-        env_infos = tensor_utils.stack_tensor_dict_list(
-            [tensor_utils.pad_tensor_dict(p, max_path_length) for p in env_infos]
-        )
-
-        valids = [np.ones_like(path["returns"]) for path in paths]
-        valids = tensor_utils.pad_tensor_n(valids, max_path_length)
         undiscounted_returns = [sum(path["rewards"]) for path in paths]
 
         samples_data = dict(
-            observations=obs,
+            observations=observations,
             actions=actions,
-            advantages=adv,
             rewards=rewards,
             returns=returns,
-            valids=valids,
-            agent_infos=agent_infos,
+            advantages=advantages,
             env_infos=env_infos,
+            agent_infos=agent_infos,
             paths=paths,
         )
+
         if log:
             logger.record_tabular(prefix+'AverageReturn', np.mean(undiscounted_returns))
             logger.record_tabular(prefix+'AveragePathLen', np.mean(avg_path_length))
@@ -115,7 +99,7 @@ class VectorizedDemoSampler(BaseSampler):
         print('starting worker for n_env=', self.n_envs)
         n_envs = self.n_envs
         if n_envs is None:
-            n_envs = int(self.algo.batch_size / self.algo.max_path_length)
+            n_envs = int(self.batch_size / self.algo.max_path_length)
             n_envs = max(1, min(n_envs, 100))
             print('now n_env=', n_envs)
 
@@ -136,7 +120,7 @@ class VectorizedDemoSampler(BaseSampler):
     def shutdown_worker(self):
         self.vec_env.terminate()
 
-    def obtain_samples(self, itr, return_dict=False, *reset_args, **reset_kwargs):
+    def obtain_samples(self, itr, return_dict=False, num_rollouts_per_env=1, *reset_args, **reset_kwargs):
         # return_dict: whether or not to return a dictionary or list form of paths
         # *reset_args: every arg can be a list of length num_envs or a single arg that will be copied equally
         # **reset_kwargs: every kwargs can be a list of length num_envs or a single kwarg that will be copied eq.
@@ -153,14 +137,18 @@ class VectorizedDemoSampler(BaseSampler):
         dones = np.asarray([True] * self.vec_env.num_envs)
         running_paths = [None] * self.vec_env.num_envs
 
-        pbar = ProgBarCounter(self.algo.batch_size)
+        # in case no specific goal was given, use the ones sampled when reseting the envs!
+        if not reset_args and not reset_kwargs:
+            reset_kwargs['objective_params'] = [env.wrapped_env.wrapped_env.objective_params for env in self.vec_env.envs]  # todo: hack! don't hand-unwrap!
+
+        pbar = ProgBarCounter(self.batch_size)
         policy_time = 0
         env_time = 0
         process_time = 0
 
         import time
 
-        while n_samples < self.algo.batch_size:
+        while n_samples < self.batch_size:
             t = time.time()
             self.policy.reset(dones)
             actions, agent_infos = self.policy.get_actions(obses, *reset_args, **reset_kwargs)  # uses the same reset_args than the env!
@@ -242,7 +230,7 @@ class VectorizedDemoSampler(BaseSampler):
             paths[i] = []
 
         n_samples = 0
-        pbar = ProgBarCounter(self.algo.batch_size)
+        pbar = ProgBarCounter(self.batch_size)
         policy_time = 0
         env_time = 0
         process_time = 0
@@ -257,7 +245,7 @@ class VectorizedDemoSampler(BaseSampler):
         dones = np.asarray([True] * self.vec_env.num_envs)
         running_paths = [None] * self.vec_env.num_envs
 
-        while n_samples <= self.algo.batch_size:
+        while n_samples <= self.batch_size:
 
             t = time.time()
             policy.reset(dones)

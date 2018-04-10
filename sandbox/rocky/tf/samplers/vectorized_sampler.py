@@ -13,13 +13,16 @@ import itertools
 
 class VectorizedSampler(BaseSampler):
 
-    def __init__(self, algo, policy=None, n_envs=None):  # allows to define another policy (for demos)!
+    def __init__(self, algo, policy=None, n_envs=None, batch_size=None):  # allows to define another policy (for demos)!
         """
         :param policy: allows to define a sampling policy. uses 0 baseline!
         :param n_envs: 
         """
         super(VectorizedSampler, self).__init__(algo, policy=policy)
         self.n_envs = n_envs
+        self.batch_size = batch_size
+        if batch_size is None:
+            self.batch_size = algo.batch_size
 
     def process_samples(self, *args, **kwargs):
         if self.policy is not self.algo.policy:
@@ -31,7 +34,7 @@ class VectorizedSampler(BaseSampler):
         print('starting worker for n_env=', self.n_envs)
         n_envs = self.n_envs
         if n_envs is None:
-            n_envs = int(self.algo.batch_size / self.algo.max_path_length)
+            n_envs = int(self.batch_size / self.algo.max_path_length)
             n_envs = max(1, min(n_envs, 100))
             print('now n_env=', n_envs)
 
@@ -69,14 +72,14 @@ class VectorizedSampler(BaseSampler):
         dones = np.asarray([True] * self.vec_env.num_envs)
         running_paths = [None] * self.vec_env.num_envs
 
-        pbar = ProgBarCounter(self.algo.batch_size)
+        pbar = ProgBarCounter(self.batch_size)
         policy_time = 0
         env_time = 0
         process_time = 0
 
         import time
 
-        while n_samples < self.algo.batch_size:
+        while n_samples < self.batch_size:
             t = time.time()
             self.policy.reset(dones)  # uses the same reset_args than the env!
             actions, agent_infos = self.policy.get_actions(obses)
