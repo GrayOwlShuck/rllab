@@ -102,6 +102,7 @@ def run_experiment(argv):
     prev_snapshot_dir = logger.get_snapshot_dir()
     prev_mode = logger.get_snapshot_mode()
     logger.set_snapshot_dir(log_dir)
+    logger.set_tf_summary_dir(osp.join(log_dir, "tf_summary"))
     logger.set_snapshot_mode(args.snapshot_mode)
     logger.set_snapshot_gap(args.snapshot_gap)
     logger.set_log_tabular_only(args.log_tabular_only)
@@ -111,7 +112,10 @@ def run_experiment(argv):
         data = joblib.load(args.resume_from)
         assert 'algo' in data
         algo = data['algo']
-        algo.train()
+        maybe_iter = algo.train()
+        if is_iterable(maybe_iter):
+            for _ in maybe_iter:
+                pass
     else:
         # read from stdin
         if args.use_cloudpickle:
