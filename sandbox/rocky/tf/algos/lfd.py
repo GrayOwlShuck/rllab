@@ -60,11 +60,11 @@ class SensitiveLfD_NPO(BatchSensitiveLfD_Polopt):
         obs_demo_vars, action_demo_vars = [], []
         for i in range(self.meta_batch_size):
             obs_demo_vars.append(self.env.observation_space.new_tensor_variable(
-                'demo_obs' + stepnum + '_' + str(i),
+                'obs' + stepnum + '_' + str(i),
                 extra_dims=1,
                 ))
             action_demo_vars.append(self.env.action_space.new_tensor_variable(
-                'demo_action' + stepnum + '_' + str(i),
+                'action' + stepnum + '_' + str(i),
                 extra_dims=1,
                 ))
         return obs_demo_vars, action_demo_vars
@@ -126,7 +126,7 @@ class SensitiveLfD_NPO(BatchSensitiveLfD_Polopt):
             all_surr_objs.append(surr_objs)
 
         # compute the surrogate obj based on the LAST update. This is over what we take the outer meta updates.
-        obs_test_vars, action_test_vars, adv_test_vars = self.make_vars('_test')
+        obs_test_vars, action_test_vars, adv_test_vars = self.make_vars('test')
         old_dist_info_test_vars, old_dist_info_vars_test_list = [], []   # this will also be given once new paths are collected
         for i in range(self.meta_batch_size):
             old_dist_info_test_vars.append({

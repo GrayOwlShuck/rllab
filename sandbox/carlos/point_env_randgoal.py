@@ -6,6 +6,7 @@ from rllab.spaces import Box
 from rllab.envs.base import Step
 from rllab.misc import logger
 import numpy as np
+import tensorflow as tf
 from sandbox.rocky.tf.policies.base import Policy
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
@@ -27,6 +28,9 @@ class PointEnvRandGoal(Env):
     def objective_params(self):
         return self._goal
 
+    def set_objective_params(self, goal):
+        self._goal = goal
+
     @property
     def observation_space(self):
         return Box(low=-8, high=8, shape=(2,))
@@ -39,13 +43,12 @@ class PointEnvRandGoal(Env):
         if clean_reset:
             # print("cleaning goal")
             self._goal = None
-        else:
-            if objective_params is not None:
-                # print("using given goal")
-                self._goal = objective_params
-            elif self._goal is None:
-                # Only set a new goal if this env hasn't had one defined before or if it has been cleaned
-                self._goal = np.random.uniform(-5, 5, size=(2,))
+        if objective_params is not None:
+            # print("using given goal")
+            self._goal = objective_params
+        elif self._goal is None:
+            # Only set a new goal if this env hasn't had one defined before or if it has been cleaned
+            self._goal = np.random.uniform(-5, 5, size=(2,))
         self._state = (0, 0)
         observation = np.copy(self._state)
         return observation
@@ -65,7 +68,8 @@ class PointEnvRandGoal(Env):
     def render(self):
         print('current state:', self._state)
 
-    def log_diagnostics(self, postupdate_paths, demos=None, preupdate_paths=None, prefix='', report=None, policy=None, goals=None):
+    def log_diagnostics(self, postupdate_paths, demos=None, preupdate_paths=None, all_updates_paths=None, prefix='',
+                        report=None, policy=None, goals=None):
         """
         :param postupdate_paths: list of dicts, one per gradient update. The keys of the dict are the env numb and the val the UNprocessed samples
         :param demos: same
@@ -88,13 +92,13 @@ class PointEnvRandGoal(Env):
         avg_demo_rewards = [None] * num_envs
         avg_demo_success = [None] * num_envs
         for ind in range(num_envs):
-            avg_postupdate_rewards[ind] = np.mean([np.mean(p['rewards']) for p in postupdate_paths[ind]])
+            avg_postupdate_rewards[ind] = np.mean([np.sum(p['rewards']) for p in postupdate_paths[ind]])
             avg_postupdate_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in postupdate_paths[ind]])
             if demos is not None:
-                avg_demo_rewards[ind] = np.mean([np.mean(p['rewards']) for p in demos[ind]])
+                avg_demo_rewards[ind] = np.mean([np.sum(p['rewards']) for p in demos[ind]])
                 avg_demo_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in demos[ind]])
             if preupdate_paths is not None:
-                avg_preupdate_rewards[ind] = np.mean([np.mean(p['rewards']) for p in preupdate_paths[ind]])
+                avg_preupdate_rewards[ind] = np.mean([np.sum(p['rewards']) for p in preupdate_paths[ind]])
                 avg_preupdate_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in preupdate_paths[ind]])
 
         for ind in range(min(5, num_envs)):
@@ -121,7 +125,7 @@ class PointEnvRandGoal(Env):
             if preupdate_paths is not None:
                 pre_points = preupdate_paths[ind][0]['observations']
                 plt.plot(pre_points[:, 0], pre_points[:, 1], '-m', linewidth=1)
-                plt.legend(['goal', 'pre-update path', 'demos', 'post-update path'])
+                plt.legend(['goal', 'post-update path', 'demos', 'pre-update path'])
             else:
                 plt.legend(['goal', 'post-update path', 'demos'])
 
@@ -189,9 +193,20 @@ class StraightDemo(Policy, Serializable):
             actions.append(goal_vec / max_coef)  # so that direction is maintained.
         return actions, dict()
 
+    # def get_params(self):
+    #     return tf.Variable('dummy', [0])
+
+    def get_param_values(self):
+        return None  # tf.Variable('dummy', [0])
+
+    def set_param_values(self, flattened_params, **tags):
+        pass
+
 
 def plot_policy_means(policy, env, bounds=None, report=None, num_samples=10, goals=None, idxs=np.arange(5)):
     # use idxs=None if not vectorized, and a list if specifying what envs to plot
+    if len(idxs) > len(goals):
+        idxs = np.arange(len(goals))
     if bounds is None:
         bounds = env.observation_space.bounds
     x = np.linspace(bounds[0][0], bounds[1][0], num_samples)

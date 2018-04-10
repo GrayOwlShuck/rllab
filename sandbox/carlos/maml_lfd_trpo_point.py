@@ -1,27 +1,24 @@
-import datetime
+import argparse
 import os.path as osp
-from rllab.misc import logger
-from sandbox.young_clgan.logging import HTMLReport
+import random
+from multiprocessing import cpu_count
+
 import tensorflow as tf
-from sandbox.rocky.tf.algos.sensitive_lfd_trpo import SensitiveLfD_TRPO
-from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
+
+from rllab import config
 from rllab.baselines.gaussian_mlp_baseline import GaussianMLPBaseline
+from rllab.baselines.linear_feature_baseline import LinearFeatureBaseline
 from rllab.baselines.zero_baseline import ZeroBaseline
-from examples.point_env_randgoal import PointEnvRandGoal, StraightDemo
 from rllab.envs.normalized_env import normalize
+from rllab.misc import logger
+from rllab.misc.instrument import VariantGenerator
 from rllab.misc.instrument import run_experiment_lite
-from sandbox.rocky.tf.policies.sens_lfd_minimal_gauss_mlp_policy import SensitiveLfdGaussianMLPPolicy
+from sandbox.carlos.point_env_randgoal import PointEnvRandGoal, StraightDemo
+from sandbox.rocky.tf.algos.sensitive_lfd_trpo import SensitiveLfD_TRPO
 from sandbox.rocky.tf.envs.base import TfEnv
+from sandbox.rocky.tf.policies.sens_lfd_minimal_gauss_mlp_policy import SensitiveLfdGaussianMLPPolicy
 from sandbox.young_clgan.logging import HTMLReport
 from sandbox.young_clgan.logging import format_dict
-from rllab.misc.instrument import VariantGenerator
-
-import argparse
-import random
-import sys
-from multiprocessing import cpu_count
-from rllab import config
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--ec2', '-e', action='store_true', default=False, help="add flag to run in ec2")
@@ -36,8 +33,7 @@ args = parser.parse_args()
 
 # setup ec2
 subnets = [
-    'us-east-2c', 'us-east-2b', 'us-east-2a', 'us-west-1a', 'ap-southeast-1a', 'us-west-1b',
-    'ap-southeast-1b', 'ap-northeast-2c', 'eu-west-1c', 'eu-west-1b', 'ap-northeast-2a'
+    'us-west-1a', 'us-west-1b', 'ap-southeast-1b', 'eu-west-1c', 'eu-west-1b'
 ]
 ec2_instance = args.type if args.type else 'm4.large'
 # configure instance
@@ -57,19 +53,19 @@ else:
 
 vg = VariantGenerator()
 # fast updates
-vg.add('demo_batch_size', [1, 5, 10, 15, 20])  # numb of traj!
-vg.add('batch_size', [20])  # numb of traj!
+vg.add('demo_batch_size', [10, 20])  # numb of traj!
+vg.add('batch_size', [50])  # numb of traj!
 vg.add('baseline', ['linear'])
 vg.add('max_path_length', [100])
-vg.add('num_grad_updates', [1, 2, 3, 4, 5])
-vg.add('fast_learning_rate', [0.5])
+vg.add('num_grad_updates', [1, 10, 20])
+vg.add('fast_learning_rate', [0.05])  # 0.08 is already too large, and even 0.05 breaks sometimes...
 # meta
 vg.add('use_meta', [True])  # if False it won't update the initial params from one itr to the next
-vg.add('meta_itr', lambda use_meta: [30] if use_meta else [1])
+vg.add('meta_itr', lambda use_meta: [50] if use_meta else [1])
 vg.add('meta_step_size', [0.01])
 vg.add('meta_batch_size', [40])  # 10 works but much less stable, 20 is fairly stable, 40 is more stable --> n_env!!!!
 # env
-vg.add('env_noise', [0, 0.5])
+vg.add('env_noise', [0, 0.1])
 vg.add('tolerance', [0.1])
 vg.add('seed', range(0, 20, 10))
 EXPERIMENT_TYPE = osp.basename(__file__).split('.')[0]
@@ -78,6 +74,7 @@ EXPERIMENT_TYPE = osp.basename(__file__).split('.')[0]
 def run_task(v):
 
     logger.log("Initializing report...")
+
     report = HTMLReport(osp.join(logger.get_snapshot_dir(), 'report.html'), images_per_row=5)
     report.add_header("{}".format(EXPERIMENT_TYPE))
     report.add_text(format_dict(v))
@@ -106,7 +103,7 @@ def run_task(v):
         policy=policy,
         demo_policy=demo_policy,
         baseline=baseline,
-        batch_size=v['batch_size'],  # number of trajs for grad update
+        batch_size=v['batch_size'],  # number of trajs for RL grad update
         demo_batch_size=v['demo_batch_size'],
         max_path_length=v['max_path_length'],
         meta_batch_size=v['meta_batch_size'],
@@ -117,6 +114,7 @@ def run_task(v):
         plot=False,
         report=report,
         preupdate_samples=True,
+        log_all_grad_steps=True,  # todo: this is intense logging
     )
 
     algo.train()

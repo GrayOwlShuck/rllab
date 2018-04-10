@@ -8,10 +8,14 @@ import rllab.plotter as plotter
 from sandbox.rocky.tf.policies.base import Policy
 import tensorflow as tf
 from sandbox.rocky.tf.samplers.batch_sampler import BatchSampler
+
 from sandbox.rocky.tf.samplers.vectorized_sampler import VectorizedSampler
 from sandbox.rocky.tf.samplers.vectorized_demo_sampler import VectorizedDemoSampler
-
 import numpy as np
+import os.path as osp
+from rllab.misc import logger
+from sandbox.young_clgan.logging import HTMLReport
+from sandbox.young_clgan.logging import format_dict
 
 
 class BatchSensitiveLfD_Polopt(RLAlgorithm):
@@ -30,7 +34,8 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
             start_itr=0,
             # Note that the number of trajectories for grad upate = batch_size
             # Defaults are 10 trajectories of length 500 for gradient update
-            batch_size=100,
+            demo_batch_size=100,
+            batch_size=100,  # test batch size, keeps original name such that it's the default for sampler
             max_path_length=500,
             meta_batch_size = 100,
             num_grad_updates=1,
@@ -49,8 +54,11 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
             demo_sampler_args=None,
             demo_policy=None,
             force_batch_sampler=False,
-            use_sensitive=True,
+            use_meta=True,
             load_policy=None,
+            report=None,
+            preupdate_samples=False,
+            log_all_grad_steps=False,
             **kwargs
     ):
         """
@@ -62,7 +70,8 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
         simultaneously, each using different environments and policies
         :param n_itr: Number of iterations.
         :param start_itr: Starting iteration.
-        :param batch_size: Number of samples per iteration.  #
+        :param demo_batch_size: Number of demo traj per iter.
+        :param batch_size: Number of test traj per iter.  #
         :param max_path_length: Maximum length of a single rollout.
         :param meta_batch_size: Number of tasks sampled per meta-update
         :param num_grad_updates: Number of fast gradient updates
@@ -81,10 +90,8 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
         self.load_policy=load_policy
         self.baseline = baseline
         self.scope = scope
-        self.n_itr = n_itr
         self.start_itr = start_itr
-        # batch_size is the number of trajectories for one fast grad update.
-        # self.batch_size is the number of total transitions to collect.
+        self.demo_batch_size = demo_batch_size * max_path_length * meta_batch_size
         self.batch_size = batch_size * max_path_length * meta_batch_size
         self.max_path_length = max_path_length
         self.discount = discount
@@ -96,8 +103,13 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
         self.store_paths = store_paths
         self.whole_paths = whole_paths
         self.fixed_horizon = fixed_horizon
-        self.meta_batch_size = meta_batch_size # number of tasks
         self.num_grad_updates = num_grad_updates # number of gradient steps during training
+        self.use_meta = use_meta
+        self.n_itr = n_itr
+        self.meta_batch_size = meta_batch_size # number of tasks per batch
+        self.report = report
+        self.preupdate_samples = preupdate_samples
+        self.log_all_grad_steps = log_all_grad_steps
 
         if sampler_cls is None:
             sampler_cls = VectorizedSampler
@@ -108,11 +120,13 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
         if demo_sampler_args is None:
             demo_sampler_args = dict()
         sampler_args['n_envs'] = demo_sampler_args['n_envs'] = self.meta_batch_size
+        sampler_args['batch_size'] = self.batch_size
+        demo_sampler_args['batch_size'] = self.demo_batch_size
         self.sampler = sampler_cls(self, **sampler_args)
         if demo_policy is None:
             print("***Your demos are dumb!***")
             demo_policy = self.policy
-        self.demo_sampler = demo_sampler_cls(self, **demo_sampler_args, policy=demo_policy)
+        self.demo_sampler = demo_sampler_cls(self, policy=demo_policy, **demo_sampler_args)
         #self.init_opt()  # init_opt now happens in train()
 
     def start_worker(self):
@@ -165,77 +179,76 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
                 with logger.prefix('itr #%d | ' % itr):
-                    # logger.log("Sampling set of tasks/goals for this meta-batch...")
-                    # # TODO - this is a hacky way to specify tasks.
-                    # if self.env.observation_space.shape[0] <= 4:  # pointmass (oracle=4, normal=2)
-                    #     learner_env_goals = np.zeros((self.meta_batch_size, 2, ))
-                    #     # 2d
-                    #     learner_env_goals = np.random.uniform(-0.5, 0.5, size=(self.meta_batch_size, 2, ))
-                    #
-                    # elif self.env.spec.action_space.shape[0] == 8: # ant
-                    #     # 0.0 to 3.0 is what specifies the task -- goal vel ranges 0-3.0.
-                    #     # for fwd/bwd env, goal direc is backwards if < 1.5, forwards if > 1.5
-                    #     learner_env_goals = np.random.uniform(0.0, 3.0, (self.meta_batch_size, ))
-                    #
-                    # elif self.env.spec.action_space.shape[0] == 6: # cheetah
-                    #     # 0.0 to 2.0 is what specifies the task -- goal vel ranges 0-2.0.
-                    #     # for fwd/bwd env, goal direc is backwards if < 1.0, forwards if > 1.0
-                    #     learner_env_goals = np.random.uniform(0.0, 2.0, (self.meta_batch_size, ))
-                    #
-                    # else:
-                    #     raise NotImplementedError('unrecognized env')
-
                     # logger.log("clean reset of the env")
-                    # self.env.reset(clean_reset=True)
+                    # self.env.reset(clean_reset=True)  # todo: need this?
                     self.start_worker()  # this re-instanciates all the envs! --> does it put to None all the goals?
                     # import pdb; pdb.set_trace()  # when it's instantiated, is it giving a None goal?
                     self.policy.switch_to_init_dist()  # Switch to pre-update policy
 
-                    # TODO: no need of several gradient updates, but still 2 for evaluating goodness of change!
-                    all_samples_data, all_unprocessed_paths, all_sampled_demos, all_unprocessed_demos = [], [], [], []
-                    for step in range(self.num_grad_updates+1):
+                    logger.log("Obtaining demos...")
+                    unprocessed_demos = self.obtain_demo_samples(itr)
+                    # for logging purpose only
+                    self.demo_sampler.process_samples(itr, flatten_list(unprocessed_demos.values()), prefix='demo_', log=True)
+
+                    if isinstance(self.sampler, VectorizedSampler):
+                        learner_env_goals = [env.wrapped_env.wrapped_env.objective_params for env in self.demo_sampler.vec_env.envs]
+                    else:
+                        learner_env_goals = self.env.wrapped_env.wrapped_env.objective_params
+                    logger.log("Processing demo samples...")  # needed to split the paths by obs/act/...
+                    sampled_demos = {}
+                    for key in unprocessed_demos.keys(): # the keys are the tasks. Process each of them sequentially
+                        # don't log because this will spam the consol with every task.
+                        sampled_demos[key] = self.demo_sampler.process_samples(itr, unprocessed_demos[key], log=False)
+
+                    unprocessed_preupdate_paths = None
+                    unprocessed_all_paths = None
+                    if self.preupdate_samples:
+                        logger.log("Obtaining preupdate samples...")
+                        unprocessed_preupdate_paths = self.obtain_samples(itr, objective_params=learner_env_goals)
+                        # for logging purpose only
+                        self.sampler.process_samples(itr, flatten_list(unprocessed_preupdate_paths.values()), prefix='preUpdate_', log=True)
+                        if self.log_all_grad_steps:
+                            unprocessed_all_paths = [unprocessed_preupdate_paths]
+
+                    for step in range(self.num_grad_updates):
                         logger.log('** Step ' + str(step) + ' **')
-                        logger.log("Obtaining samples...")  # TODO: make sure that the reset is only done in first step!
-                        paths = self.obtain_samples(itr)  # should not need to fix reset # , reset_args=learner_env_goals)
-                        # capture the reset_args that should be use to give the demos
-                        if isinstance(self.sampler, VectorizedSampler):
-                            learner_env_goals = [env.wrapped_env.wrapped_env.objective_params for env in self.sampler.vec_env.envs]
-                        else:
-                            learner_env_goals = self.env.wrapped_env.wrapped_env.objective_params
-                        demos = self.obtain_demo_samples(itr, objective_params=learner_env_goals)
-                        all_unprocessed_paths.append(paths)
-                        all_unprocessed_demos.append(demos)
-                        logger.log("Processing samples...")
-                        samples_data = {}
-                        samples_demos = {}
-                        for key in paths.keys():  # the keys are the tasks. Process each of them sequentially
-                            # don't log because this will spam the consol with every task.
-                            samples_data[key] = self.sampler.process_samples(itr, paths[key], log=False)
-                        for key in demos.keys():
-                            samples_demos[key] = self.demo_sampler.process_samples(itr, demos[key], log=False)
-                        all_samples_data.append(samples_data)
-                        all_sampled_demos.append(samples_demos)
-                        # for logging purposes only
-                        self.sampler.process_samples(itr, flatten_list(paths.values()), prefix=str(step), log=True)
-                        self.demo_sampler.process_samples(itr, flatten_list(demos.values()), prefix='demos_'+str(step), log=True)
-                        logger.log("Logging diagnostics...")
-                        self.log_diagnostics(flatten_list(paths.values()), prefix=str(step))
                         if step < self.num_grad_updates:
                             logger.log("Computing policy updates...")
-                            self.policy.compute_updated_dists(samples_data)
+                            self.policy.compute_updated_lfd_dists(sampled_demos, step + 1)  # todo: this should log loss. HERE!!
+                            if self.log_all_grad_steps:
+                                logger.log("Obtaining post %i update samples..." % (step + 1))
+                                new_unprocessed_preupdate_paths = self.obtain_samples(itr, objective_params=learner_env_goals)
+                                # for logging purpose only
+                                self.sampler.process_samples(itr, flatten_list(new_unprocessed_preupdate_paths.values()), prefix='post%iUpdate_'%(step+1), log=True)
+                                unprocessed_all_paths.append(new_unprocessed_preupdate_paths)
 
 
-                    logger.log("Optimizing policy...")
-                    # This needs to take all samples_data so that it can construct graph for meta-optimization.
-                    self.optimize_policy(itr, all_samples_data)
+                    logger.log("Obtaining final samples...")
+                    unprocessed_paths = self.obtain_samples(itr, objective_params=learner_env_goals)
+                    # for logging purpose only
+                    self.sampler.process_samples(itr, flatten_list(unprocessed_paths.values()), prefix='postUpdate_', log=True)
 
-                    logger.log("Logging diagnostics...") # assumes list of dicts of list of paths
-                    self.env.log_diagnostics(paths=all_unprocessed_paths, demos=all_unprocessed_demos, prefix='')  # without the vect it would be a list of lists of paths, not supported
+                    sampled_data = {}
+                    for key in unprocessed_paths.keys():  # the keys are the tasks. Process each of them sequentially
+                        # don't log because this will spam the consol with every task.
+                        sampled_data[key] = self.sampler.process_samples(itr, unprocessed_paths[key], log=False)
+
+                    if self.use_meta:
+                        logger.log("Optimizing policy...")
+                        # This needs to take all samples_data so that it can construct graph for meta-optimization.
+                        self.optimize_policy(itr, [sampled_demos, sampled_data])
+
+                    logger.log("Logging diagnostics...")  # assumes list of dicts of list of paths
+                    self.env.log_diagnostics(unprocessed_paths, demos=unprocessed_demos,
+                                             preupdate_paths=unprocessed_preupdate_paths,
+                                             all_updates_paths=unprocessed_all_paths, prefix='',
+                                             report=self.report, policy=self.policy,
+                                             goals=learner_env_goals)
 
                     logger.log("Saving snapshot...")
-                    params = self.get_itr_snapshot(itr, all_samples_data[-1])  # , **kwargs)
+                    params = self.get_itr_snapshot(itr, sampled_data)  # , **kwargs)
                     if self.store_paths:
-                        params["paths"] = all_samples_data[-1]["paths"]
+                        params["paths"] = sampled_data["paths"]
                     logger.save_itr_params(itr, params)
                     logger.log("Saved")
                     logger.record_tabular('Time', time.time() - start_time)
