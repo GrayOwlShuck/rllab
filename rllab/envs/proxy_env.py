@@ -41,3 +41,10 @@ class ProxyEnv(Env):
 
     def set_param_values(self,params):
         self._wrapped_env.set_param_values(params)
+
+    def __getattr__(self, name):
+        """ Relay unknown attribute access to the wrapped_env. """
+        if name == '_wrapped_env':
+            # Prevent recursive call on self._wrapped_env
+            raise AttributeError('_wrapped_env not initialized yet!')
+        return getattr(self._wrapped_env, name)
