@@ -1,6 +1,7 @@
 data
 *.pyc
 *-checkpoint.ipynb
+model_checkpoint/
 .DS_Store
 *.h5
 *.log
@@ -36,3 +37,4 @@ blackbox.zip
 blackbox
 rllab/config_personal.py
 *.swp
+reptile/
