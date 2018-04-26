@@ -11,10 +11,11 @@ from sandbox.rocky.tf.policies.gaussian_mlp_policy import GaussianMLPPolicy
 #from sandbox.rocky.tf.policies.minimal_gauss_mlp_policy import GaussianMLPPolicy
 from sandbox.rocky.tf.envs.base import TfEnv
 
-stub(globals())
+# stub(globals())
 
 #env = TfEnv(normalize(PointEnv()))
 env = TfEnv(normalize(PointEnvRandGoal()))
+
 policy = GaussianMLPPolicy(
     name="policy",
     env_spec=env.spec,
@@ -32,6 +33,7 @@ algo = VPG(
 )
 run_experiment_lite(
     algo.train(),
+    use_cloudpickle=True,
     n_parallel=1,
     snapshot_mode="last",
     seed=1,
