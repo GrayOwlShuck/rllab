@@ -1,3 +1,6 @@
+
+from contextlib import ExitStack
+
 import time
 from rllab.algos.base import RLAlgorithm
 import rllab.misc.logger as logger
@@ -79,11 +82,12 @@ class BatchPolopt(RLAlgorithm):
         self.store_paths = store_paths
         self.whole_paths = whole_paths
         self.fixed_horizon = fixed_horizon
+        self.opt_initialized = False
         if sampler_cls is None:
-            #if self.policy.vectorized and not force_batch_sampler:
-            sampler_cls = VectorizedSampler
-            #else:
-            #    sampler_cls = BatchSampler
+            if self.policy.vectorized and not force_batch_sampler:
+                sampler_cls = VectorizedSampler
+            else:
+               sampler_cls = BatchSampler
         if sampler_args is None:
             sampler_args = dict()
         self.sampler = sampler_cls(self, **sampler_args)
@@ -97,47 +101,55 @@ class BatchPolopt(RLAlgorithm):
     def shutdown_worker(self):
         self.sampler.shutdown_worker()
 
-    def obtain_samples(self, itr):
-        return self.sampler.obtain_samples(itr, reset_args=self.reset_arg)
+    def obtain_samples(self, itr, **reset_kwargs):  #todo: remove reset_args from self of the algo!!
+        return self.sampler.obtain_samples(itr, reset_args=self.reset_arg, **reset_kwargs)
 
     def process_samples(self, itr, paths):
         return self.sampler.process_samples(itr, paths)
 
-    def train(self):
-        with tf.Session() as sess:
-            if self.load_policy is not None:
-                import joblib
-                self.policy = joblib.load(self.load_policy)['policy']
+    def initialize_variables(self, sess=None):
+        if self.load_policy is not None:
+            import joblib
+            self.policy = joblib.load(self.load_policy)['policy']
+        if not self.opt_initialized:
+            print("************* Running init opt!! ********************")
             self.init_opt()
-            # initialize uninitialized vars (I know, it's ugly)
-            uninit_vars = []
-            for var in tf.all_variables():
-                try:
-                    sess.run(var)
-                except tf.errors.FailedPreconditionError:
-                    uninit_vars.append(var)
-            sess.run(tf.initialize_variables(uninit_vars))
-            #sess.run(tf.initialize_all_variables())
+        # initialize uninitialized vars (I know, it's ugly)
+        uninit_vars = []
+        for var in tf.all_variables():
+            try:
+                sess.run(var)
+            except tf.errors.FailedPreconditionError:
+                print("Uninit var: ", var)
+                uninit_vars.append(var)
+        sess.run(tf.initialize_variables(uninit_vars))
+
+    def train(self, sess=None, **reset_kwargs):
+        all_paths = []
+        with ExitStack() as stack:
+            if sess is None:
+                sess = stack.enter_context(tf.Session())
+            self.initialize_variables(sess)
             self.start_worker()
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):
                 itr_start_time = time.time()
                 with logger.prefix('itr #%d | ' % itr):
-
                     logger.log("Obtaining samples...")
-                    paths = self.obtain_samples(itr)
+                    paths = self.obtain_samples(itr, **reset_kwargs)
                     logger.log("Processing samples...")
                     samples_data = self.process_samples(itr, paths)
                     logger.log("Logging diagnostics...")
                     self.log_diagnostics(paths)
                     logger.log("Optimizing policy...")
                     self.optimize_policy(itr, samples_data)
-                    #new_param_values = self.policy.get_variable_values(self.policy.all_params)
+                    # new_param_values = self.policy.get_variable_values(self.policy.all_params)
 
                     logger.log("Saving snapshot...")
                     params = self.get_itr_snapshot(itr, samples_data)  # , **kwargs)
                     if self.store_paths:
                         params["paths"] = samples_data["paths"]
+                    all_paths.append(paths)
                     logger.save_itr_params(itr, params)
                     logger.log("Saved")
                     logger.record_tabular('Time', time.time() - start_time)
@@ -170,6 +182,7 @@ class BatchPolopt(RLAlgorithm):
                             input("Plotting evaluation run: Press Enter to "
                                   "continue...")
         self.shutdown_worker()
+        return all_paths
 
     def log_diagnostics(self, paths):
         self.env.log_diagnostics(paths)
@@ -181,6 +194,7 @@ class BatchPolopt(RLAlgorithm):
         Initialize the optimization procedure. If using tensorflow, this may
         include declaring all the variables and compiling functions
         """
+        self.opt_initialized = True
         raise NotImplementedError
 
     def get_itr_snapshot(self, itr, samples_data):

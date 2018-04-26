@@ -162,6 +162,7 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
             if self.load_policy is not None:
                 import joblib
                 self.policy = joblib.load(self.load_policy)['policy']
+            logger.log("initializing the comutation graph")
             self.init_opt()
             # initialize uninitialized vars  (only initialize vars that were not loaded)
             uninit_vars = []
@@ -172,8 +173,8 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
                 except tf.errors.FailedPreconditionError:
                     uninit_vars.append(var)
             sess.run(tf.variables_initializer(uninit_vars))
+            logger.log("about to start workers in the train method of batch_lfd_polopt")
 
-            print('about to start workers in the train method of batch_lfd_polopt')
             self.start_worker()
             start_time = time.time()
             for itr in range(self.start_itr, self.n_itr):

@@ -103,6 +103,7 @@ class VPG(BatchPolopt, Serializable):
         self.opt_info = dict(
             f_kl=f_kl,
         )
+        self.opt_initialized = True
 
     @overrides
     def optimize_policy(self, itr, samples_data):
