@@ -17,40 +17,58 @@ import matplotlib.colorbar as cbar
 import matplotlib.patches as patches
 
 
-class PointEnvRandGoal(Env):
-    def __init__(self, goal=None, noise=0.1, tolerance=0.1):  # Can set goal to test adaptation.
+class PointEnvRandGoal(Env, Serializable):
+    def __init__(self, goal=None, noise=0.1, tolerance=0.1, obs_append_objective=False):  # Can set goal to test adaptation.
+        Serializable.__init__(self, locals())  # todo: is this safe?
+        # Serializable.quick_init(self, locals())
         self._goal = goal
         self._state = (0, 0)
         self._noise = noise
         self._tolerance = tolerance
+        self.obs_append_objective = obs_append_objective
 
     @property  # this should have the same name for all: ant/cheetah direction,... and be a list of params
     def objective_params(self):
         return self._goal
+
+    @property
+    def test_objective_params(self):
+        return [(-7, -7), (-7, 7), (7, -7), (7, 7), (0, 7),  (7, 0), (-7, 0), (0, -7), (0, 0), (-3, 2), (2, -3)]
 
     def set_objective_params(self, goal):
         self._goal = goal
 
     @property
     def observation_space(self):
-        return Box(low=-8, high=8, shape=(2,))
+        obs_dim = 4 if self.obs_append_objective else 2
+        return Box(low=-8, high=8, shape=(obs_dim,))
 
     @property
     def action_space(self):
         return Box(low=-0.1, high=0.1, shape=(2,))
 
-    def reset(self, objective_params=None, clean_reset=False):
+    def get_current_obs(self):
+        observation = np.copy(self._state)
+        if self.obs_append_objective:
+            observation = np.concatenate([observation, self.objective_params])
+        return observation
+
+    def reset(self, objective_params=None, clean_reset=False, *reset_args, **reset_kwargs):
         if clean_reset:
-            # print("cleaning goal")
+            print("cleaning goal!")
             self._goal = None
         if objective_params is not None:
             # print("using given goal")
             self._goal = objective_params
         elif self._goal is None:
+            # print("the goal was None so I resample a random")
             # Only set a new goal if this env hasn't had one defined before or if it has been cleaned
             self._goal = np.random.uniform(-5, 5, size=(2,))
+        # else:
+            # print("there was already a goal! ", self._goal)
+        # print("After reset, new goal is: ", self._goal)
         self._state = (0, 0)
-        observation = np.copy(self._state)
+        observation = self.get_current_obs()
         return observation
 
     def step(self, action):
@@ -62,20 +80,20 @@ class PointEnvRandGoal(Env):
         y -= self._goal[1]
         reward = - (x ** 2 + y ** 2) ** 0.5
         done = abs(x) < 0.1 and abs(y) < 0.1
-        next_observation = np.copy(self._state)
+        next_observation = self.get_current_obs()
         return Step(observation=next_observation, reward=reward, done=done, goal=self._goal, goal_reached=done)  # goal goes to env_infos
 
     def render(self):
         print('current state:', self._state)
 
-    def log_diagnostics(self, postupdate_paths, demos=None, preupdate_paths=None, all_updates_paths=None, prefix='',
+    def log_diagnostics_2(self, postupdate_paths, demos=None, preupdate_paths=None, all_updates_paths=None, prefix='',
                         report=None, policy=None, goals=None):
         """
         :param postupdate_paths: list of dicts, one per gradient update. The keys of the dict are the env numb and the val the UNprocessed samples
         :param demos: same
         """
         logger.log("Saving visualization of paths")
-        if type(postupdate_paths) == dict:
+        if type(postupdate_paths) == dict:  # a dic with integer keys (the envs). We have to give unprocessed paths (ie, non-concat)
             postupdate_paths = postupdate_paths
             preupdate_paths = preupdate_paths
         elif (type(postupdate_paths) == list and len(postupdate_paths) > 1 and type(postupdate_paths[0]) == dict):
@@ -89,6 +107,8 @@ class PointEnvRandGoal(Env):
         avg_postupdate_success = [None] * num_envs
         avg_preupdate_rewards = [None] * num_envs
         avg_preupdate_success = [None] * num_envs
+        avg_improvement_rewards = [None] * num_envs
+        avg_improvement_success = [None] * num_envs
         avg_demo_rewards = [None] * num_envs
         avg_demo_success = [None] * num_envs
         for ind in range(num_envs):
@@ -100,73 +120,76 @@ class PointEnvRandGoal(Env):
             if preupdate_paths is not None:
                 avg_preupdate_rewards[ind] = np.mean([np.sum(p['rewards']) for p in preupdate_paths[ind]])
                 avg_preupdate_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in preupdate_paths[ind]])
+                avg_improvement_rewards[ind] = avg_postupdate_rewards[ind] - avg_preupdate_rewards[ind]
+                avg_improvement_success[ind] = avg_postupdate_success[ind] - avg_preupdate_success[ind]
+
+        # logging for viskit plotting
+        logger.record_tabular('postUpdate_AverageSuccess', np.mean(avg_postupdate_success))
+        logger.record_tabular('postUpdate_AverageReward', np.mean(avg_postupdate_rewards))
+        if preupdate_paths is not None:
+            logger.record_tabular('preUpdate_AverageSuccess', np.mean(avg_preupdate_success))
+            logger.record_tabular('preUpdate_AverageReward', np.mean(avg_preupdate_rewards))
+            logger.record_tabular('Improvement_AverageSuccess', np.mean(avg_improvement_success))
+            logger.record_tabular('Improvement_AverageReward', np.mean(avg_improvement_rewards))
+        if demos is not None:
+            logger.record_tabular('demo_AverageSuccess', np.mean(avg_demo_success))
 
         for ind in range(min(5, num_envs)):
-            plt.clf()
-            plt.plot(*postupdate_paths[ind][0]['env_infos']['goal'][0], 'r*',
-                     markersize=10)
-            post_points = postupdate_paths[ind][0]['observations']
-            plt.plot(post_points[:, 0], post_points[:, 1], '-b', linewidth=1)
-
-            # pre_points = preupdate_paths[ind][1]['observations']
-            # post_points = postupdate_paths[ind][1]['observations']
-            # plt.plot(pre_points[:, 0], pre_points[:, 1], '--r', linewidth=2)
-            # plt.plot(post_points[:, 0], post_points[:, 1], '--b', linewidth=1)
-            #
-
+            summary_text = ''
+            if avg_preupdate_rewards[0] is not None:
+                summary_text += 'Avg Preupdate Rew: {:.2f}, Avg Preupdate Success:{:.2f}\n'.format(np.mean(avg_preupdate_rewards),
+                                                                                                   np.mean(avg_preupdate_success))
+            summary_text += 'Avg Postupdate Rew: {:.2f}, Avg Post Success:{:.2f}\n'.format(np.mean(avg_postupdate_rewards),
+                                                                                          np.mean(avg_postupdate_success))
+            if avg_demo_rewards[0] is not None:
+                summary_text += 'Avg Demo Rew: {:.2f}, Avg Demo Success:{:.2f}\n'.format(np.mean(avg_demo_rewards),
+                                                                                         np.mean(avg_demo_success))
+            goal = postupdate_paths[ind][0]['env_infos']['goal'][0]
+            post_obs = postupdate_paths[ind][0]['observations']
+            demo_obs = None
+            pre_obs = None
             if demos is not None:
                 if type(demos) == dict:
                     demo_paths = demos
                 else:  # todo: in what case is demos a list? what are the other elements?
                     demo_paths = demos[0]
-                demo_points = demo_paths[ind][0]['observations']
-                plt.plot(demo_points[:, 0], demo_points[:, 1], '-.g', linewidth=2)
-
+                demo_obs = demo_paths[ind][0]['observations']
             if preupdate_paths is not None:
-                pre_points = preupdate_paths[ind][0]['observations']
-                plt.plot(pre_points[:, 0], pre_points[:, 1], '-m', linewidth=1)
-                plt.legend(['goal', 'post-update path', 'demos', 'pre-update path'])
-            else:
-                plt.legend(['goal', 'post-update path', 'demos'])
+                pre_obs = preupdate_paths[ind][0]['observations']
 
-            plt.plot(0, 0, 'b.', markersize=5)
-            plt.xlim([-8, 8])
-            plt.ylim([-8, 8])
+            self.plot_paths(preupdate_obs=pre_obs, postupdate_obs=post_obs, demo_obs=demo_obs, goal=goal,
+                            summary_text=summary_text, report=report, ind=ind)
 
-            log_dir = logger.get_snapshot_dir()
-            if report is None:
-                plt.savefig(osp.join(log_dir, 'post_update_plot' + str(ind) + '.png'))
-            else:
-                vec_img = save_image()
-                summary_text = 'Env_{}:\nAvg Postupdate Rew: {:.2f}, Avg Post Success:{:.2f}\n'.format(ind,
-                                                                                      avg_postupdate_rewards[ind],
-                                                                                      avg_postupdate_success[ind])
-                if avg_demo_rewards[ind] is not None:
-                    summary_text += 'Avg Demo Rew: {:.2f}, Avg Demo Success:{:.2f}\n'.format(avg_demo_rewards[ind],
-                                                                                     avg_demo_success[ind])
-                if avg_preupdate_rewards[ind] is not None:
-                    summary_text += 'Avg Preupdate Rew: {:.2f}, Avg Preupdate Success:{:.2f}\n'.format(avg_preupdate_rewards[ind],
-                                                                                               avg_preupdate_success[ind])
-                report.add_image(vec_img, summary_text)
-
-        report.new_row()
+        if report is not None:
+            report.new_row()
         if policy is not None:
             plot_policy_means(policy, self, self.observation_space.bounds, report, goals=goals)
 
-        summary_text = 'Avg Postupdate Rew: {:.2f}, Avg Post Success:{:.2f}\n'.format(np.mean(avg_postupdate_rewards),
-                                                                              np.mean(avg_postupdate_success))
-        logger.record_tabular('postUpdate_AverageSuccess', np.mean(avg_postupdate_success))
-        if avg_demo_rewards[0] is not None:
-            summary_text += 'Avg Demo Rew: {:.2f}, Avg Demo Success:{:.2f}\n'.format(np.mean(avg_demo_rewards),
-                                                                             np.mean(avg_demo_success))
-            logger.record_tabular('demo_AverageSuccess', np.mean(avg_demo_success))
-        if avg_preupdate_rewards[0] is not None:
-            summary_text += 'Avg Preupdate Rew: {:.2f}, Avg Preupdate Success:{:.2f}\n'.format(np.mean(avg_preupdate_rewards),
-                                                                                       np.mean(avg_preupdate_success))
-            logger.record_tabular('preUpdate_AverageSuccess', np.mean(avg_preupdate_success))
-        report.add_text(summary_text)
-        report.save()
+    def plot_paths(self, preupdate_obs=None, postupdate_obs=None, demo_obs=None, goal=None, summary_text="",
+                   report=None, ind=0):
+        plt.clf()
+        if goal is not None:
+            plt.plot(*goal, 'r*', markersize=10, label='goal')
+        if preupdate_obs is not None:
+            plt.plot(preupdate_obs[:, 0], preupdate_obs[:, 1], '-m', linewidth=1, label='preupdate')
+        if postupdate_obs is not None:
+            plt.plot(postupdate_obs[:, 0], postupdate_obs[:, 1], '-b', linewidth=1, label='post-update')
+        if demo_obs is not None:
+            plt.plot(demo_obs[:, 0], demo_obs[:, 1], '-.g', linewidth=2, label='demo')
 
+        plt.legend()
+        plt.plot(0, 0, 'b.', markersize=5)
+        plt.xlim([-8, 8])
+        plt.ylim([-8, 8])
+
+        log_dir = logger.get_snapshot_dir()
+        if report is None:
+            plt.figtext(0.02, 0.02, summary_text)  # todo: pull image up to fit text without overlap
+            plt.savefig(osp.join(log_dir, 'post_update_plot' + str(ind) + '.png'))
+        else:
+            vec_img = save_image()
+            report.add_image(vec_img, summary_text)
+        plt.close('all')
 
 class StraightDemo(Policy, Serializable):
     def __init__(self, *args, **kwargs):
@@ -241,6 +264,7 @@ def plot_policy_means(policy, env, bounds=None, report=None, num_samples=10, goa
         vec_img = save_image()
         if report is not None:
             report.add_image(vec_img, 'policy means Env_' + str(idx))
+    plt.close('all')
 
 
 def save_image(fig=None, fname=None):
