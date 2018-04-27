@@ -447,10 +447,14 @@ class SensitiveLfdGaussianMLPPolicy(StochasticPolicy, Serializable):
         # this function takes a numpy array observations and outputs randomly sampled actions.
         # idx: index corresponding to the task/updated policy. If array, returns a dict!
         flat_obs = self.observation_space.flatten_n(observation)
-        f_dist = self._cur_f_dist
+        result = self._cur_f_dist(flat_obs)
         # import pdb; pdb.set_trace()
-        means = np.array([x[0] for x in f_dist(flat_obs)])[idx, 0, :]
-        log_stds = np.array([x[1] for x in f_dist(flat_obs)])[idx, 0, :]
+        if len(result) == 2:  # TODO - this code assumes that there aren't 2 meta tasks in a batch
+            means, log_stds = result
+        else:
+            means = np.array([x[0] for x in result])[idx, 0, :]
+            log_stds = np.array([x[1] for x in result])[idx, 0, :]
+
         rnd = np.random.normal(size=means.shape)
         action = rnd * np.exp(log_stds) + means
         return action, dict(mean=means, log_std=log_stds)
