@@ -66,7 +66,7 @@ def rollout_demo(env, agent, max_path_length=np.inf, animated=False, speedup=1, 
     env_infos = []
     images = []
     o = env.reset()
-    print('resetting env_goal to: ', env.objective_params)
+    # print('resetting env_goal to: ', env.objective_params)
     agent.reset()
     path_length = 0
     if animated:

@@ -50,6 +50,7 @@ class VecEnvExecutor(object):
                 for env_idx, kwarg in enumerate(val):
                     expanded_reset_kwargs[env_idx][kw] = kwarg
 
+        # print("inside VectEnvEx: expanded_reset_arg=", expanded_reset_args, ", expanded_reset_kwargs=", expanded_reset_kwargs)
         dones = np.cast['bool'](dones)
         results = [env.reset(*arg, **kwargs) for idx, env, arg, kwargs in
                    zip(range(self.num_envs), self.envs, expanded_reset_args, expanded_reset_kwargs) if dones[idx]]

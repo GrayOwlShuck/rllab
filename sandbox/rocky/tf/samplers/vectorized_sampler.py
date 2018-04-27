@@ -141,7 +141,7 @@ class VectorizedSampler(BaseSampler):
         logger.record_tabular("EnvExecTime", env_time)
         logger.record_tabular("ProcessExecTime", process_time)
 
-        if not return_dict:
+        if not return_dict:  # this forgets which paths came from what env!
             flatten_list = lambda l: [item for sublist in l for item in sublist]
             paths = flatten_list(paths.values())
             #path_keys = flatten_list([[key]*len(paths[key]) for key in paths.keys()])

@@ -57,7 +57,7 @@ vg.add('demo_batch_size', [10, 20])  # numb of traj!
 vg.add('batch_size', [50])  # numb of traj!
 vg.add('baseline', ['linear'])
 vg.add('max_path_length', [100])
-vg.add('num_grad_updates', [1, 10, 20])
+vg.add('num_grad_updates', [1, 5, 10, 20])
 vg.add('fast_learning_rate', [0.05])  # 0.08 is already too large, and even 0.05 breaks sometimes...
 # meta
 vg.add('use_meta', [True])  # if False it won't update the initial params from one itr to the next
