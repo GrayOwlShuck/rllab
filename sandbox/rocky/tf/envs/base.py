@@ -7,6 +7,7 @@ from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.rocky.tf.spaces.box import Box
 from sandbox.rocky.tf.spaces.product import Product
 from cached_property import cached_property
+from rllab.core.serializable import Serializable
 
 
 def to_tf_space(space):
@@ -30,7 +31,12 @@ class WrappedCls(object):
         return self.cls(self.env_cls(*args, **dict(self.extra_kwargs, **kwargs)))
 
 
-class TfEnv(ProxyEnv):
+# class TfEnv(ProxyEnv):
+class TfEnv(ProxyEnv, Serializable):
+    def __init__(self, env):
+        ProxyEnv.__init__(self, env)
+        Serializable.quick_init(self, locals())
+
     @cached_property
     def observation_space(self):
         return to_tf_space(self.wrapped_env.observation_space)
@@ -50,8 +56,9 @@ class TfEnv(ProxyEnv):
     def vectorized(self):
         return getattr(self.wrapped_env, "vectorized", False)
 
-    def vec_env_executor(self, n_envs, max_path_length):
-        return VecTfEnv(self.wrapped_env.vec_env_executor(n_envs=n_envs, max_path_length=max_path_length))
+    # CF todo remove this?
+    # def vec_env_executor(self, n_envs, max_path_length):
+    #     return VecTfEnv(self.wrapped_env.vec_env_executor(n_envs=n_envs, max_path_length=max_path_length))
 
     @classmethod
     def wrap(cls, env_cls, **extra_kwargs):
