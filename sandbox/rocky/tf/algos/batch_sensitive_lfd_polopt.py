@@ -223,7 +223,6 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
                                 self.sampler.process_samples(itr, flatten_list(new_unprocessed_preupdate_paths.values()), prefix='post%iUpdate_'%(step+1), log=True)
                                 unprocessed_all_paths.append(new_unprocessed_preupdate_paths)
 
-
                     logger.log("Obtaining final samples...")
                     unprocessed_paths = self.obtain_samples(itr, objective_params=learner_env_goals)
                     # for logging purpose only
@@ -240,7 +239,7 @@ class BatchSensitiveLfD_Polopt(RLAlgorithm):
                         self.optimize_policy(itr, [sampled_demos, sampled_data])
 
                     logger.log("Logging diagnostics...")  # assumes list of dicts of list of paths
-                    self.env.log_diagnostics(unprocessed_paths, demos=unprocessed_demos,
+                    self.env.log_diagnostics(unprocessed_paths, plot=True, demos=unprocessed_demos,
                                              preupdate_paths=unprocessed_preupdate_paths,
                                              all_updates_paths=unprocessed_all_paths, prefix='',
                                              report=self.report, policy=self.policy,
