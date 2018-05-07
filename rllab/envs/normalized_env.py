@@ -8,7 +8,7 @@ from rllab.misc.overrides import overrides
 from rllab.envs.base import Step
 
 
-class NormalizedEnv(ProxyEnv, Serializable):
+class NormalizedEnv(ProxyEnv):   # , Serializable):
     def __init__(
             self,
             env,
@@ -19,7 +19,7 @@ class NormalizedEnv(ProxyEnv, Serializable):
             reward_alpha=0.001,
     ):
         ProxyEnv.__init__(self, env)
-        Serializable.quick_init(self, locals())
+        # Serializable.quick_init(self, locals())
         self._scale_reward = scale_reward
         self._normalize_obs = normalize_obs
         self._normalize_reward = normalize_reward
@@ -55,16 +55,16 @@ class NormalizedEnv(ProxyEnv, Serializable):
         else:
             return ret
 
-    def __getstate__(self):
-        d = Serializable.__getstate__(self)
-        d["_obs_mean"] = self._obs_mean
-        d["_obs_var"] = self._obs_var
-        return d
-
-    def __setstate__(self, d):
-        Serializable.__setstate__(self, d)
-        self._obs_mean = d["_obs_mean"]
-        self._obs_var = d["_obs_var"]
+    # def __getstate__(self):
+    #     d = Serializable.__getstate__(self)
+    #     d["_obs_mean"] = self._obs_mean
+    #     d["_obs_var"] = self._obs_var
+    #     return d
+    #
+    # def __setstate__(self, d):
+    #     Serializable.__setstate__(self, d)
+    #     self._obs_mean = d["_obs_mean"]
+    #     self._obs_var = d["_obs_var"]
 
     @property
     @overrides

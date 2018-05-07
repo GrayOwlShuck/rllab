@@ -7,7 +7,7 @@ from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.rocky.tf.spaces.box import Box
 from sandbox.rocky.tf.spaces.product import Product
 from cached_property import cached_property
-from rllab.core.serializable import Serializable
+# from rllab.core.serializable import Serializable
 
 
 def to_tf_space(space):
@@ -32,10 +32,10 @@ class WrappedCls(object):
 
 
 # class TfEnv(ProxyEnv):
-class TfEnv(ProxyEnv, Serializable):
+class TfEnv(ProxyEnv):  # , Serializable):
     def __init__(self, env):
         ProxyEnv.__init__(self, env)
-        Serializable.quick_init(self, locals())
+        # Serializable.quick_init(self, locals())
 
     @cached_property
     def observation_space(self):

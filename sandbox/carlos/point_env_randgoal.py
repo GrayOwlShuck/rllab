@@ -9,23 +9,27 @@ import numpy as np
 import tensorflow as tf
 from sandbox.rocky.tf.policies.base import Policy
 from rllab.misc.overrides import overrides
-from rllab.core.serializable import Serializable
+# from rllab.core.serializable import Serializable
 import matplotlib.pyplot as plt
 
 # from pylab import *
 import matplotlib.colorbar as cbar
 import matplotlib.patches as patches
 
+class PointEnvRandGoal(Env):  #, Serializable):
+    def __init__(self, goal=None, noise=0.1, tolerance=0.1, fix_goal=False,
+                 obs_append_objective=False, sparse_reward=False):
 
-class PointEnvRandGoal(Env, Serializable):
-    def __init__(self, goal=None, noise=0.1, tolerance=0.1, obs_append_objective=False):  # Can set goal to test adaptation.
-        Serializable.__init__(self, locals())  # todo: is this safe?
+        # Serializable.__init__(self, locals())  # todo: is this safe?
+        # self.quick_init(locals())  # todo: is this safe?
         # Serializable.quick_init(self, locals())
         self._goal = goal
         self._state = (0, 0)
         self._noise = noise
         self._tolerance = tolerance
-        self.obs_append_objective = obs_append_objective
+        self._fix_goal = fix_goal
+        self._obs_append_objective = obs_append_objective
+        self._sparse_reward = sparse_reward
 
     @property  # this should have the same name for all: ant/cheetah direction,... and be a list of params
     def objective_params(self):
@@ -33,14 +37,14 @@ class PointEnvRandGoal(Env, Serializable):
 
     @property
     def test_objective_params(self):
-        return [(-7, -7), (-7, 7), (7, -7), (7, 7), (0, 7),  (7, 0), (-7, 0), (0, -7), (0, 0), (-3, 2), (2, -3)]
+        return [(-6, -6), (-6, 6), (6, -6), (6, 6), (0, 6),  (6, 0), (-6, 0), (0, -6)]
 
     def set_objective_params(self, goal):
         self._goal = goal
 
     @property
     def observation_space(self):
-        obs_dim = 4 if self.obs_append_objective else 2
+        obs_dim = 4 if self._obs_append_objective else 2
         return Box(low=-8, high=8, shape=(obs_dim,))
 
     @property
@@ -49,18 +53,18 @@ class PointEnvRandGoal(Env, Serializable):
 
     def get_current_obs(self):
         observation = np.copy(self._state)
-        if self.obs_append_objective:
+        if self._obs_append_objective:
             observation = np.concatenate([observation, self.objective_params])
         return observation
 
     def reset(self, objective_params=None, clean_reset=False, *reset_args, **reset_kwargs):
-        if clean_reset:
-            print("cleaning goal!")
+        if clean_reset and not self._fix_goal:
+            # print("cleaning goal!")
             self._goal = None
-        if objective_params is not None:
-            # print("using given goal")
+        if objective_params is not None and not self._fix_goal:
+            # print("using given goal: ", objective_params)
             self._goal = objective_params
-        elif self._goal is None:
+        elif self._goal is None:  # I will allow to rest if there is no goal
             # print("the goal was None so I resample a random")
             # Only set a new goal if this env hasn't had one defined before or if it has been cleaned
             self._goal = np.random.uniform(-5, 5, size=(2,))
@@ -74,17 +78,29 @@ class PointEnvRandGoal(Env, Serializable):
     def step(self, action):
         # print("inside env step: _state, goal, action:", self._state, self._goal, self. action)
         self._state = np.clip(self._state + action + self._noise * np.random.randn(*np.shape(self._state)),
-                              *self.observation_space.bounds)
+                              *(b[:2] for b in self.observation_space.bounds))  # remove the goal bounds
         x, y = self._state
         x -= self._goal[0]
         y -= self._goal[1]
-        reward = - (x ** 2 + y ** 2) ** 0.5
-        done = abs(x) < 0.1 and abs(y) < 0.1
+        dist = (x ** 2 + y ** 2) ** 0.5
+        reward = int(dist < self._tolerance) if self._sparse_reward else - dist
+        done =  dist < self._tolerance
         next_observation = self.get_current_obs()
         return Step(observation=next_observation, reward=reward, done=done, goal=self._goal, goal_reached=done)  # goal goes to env_infos
 
     def render(self):
         print('current state:', self._state)
+
+    def log_diagnostics(self, paths, prefix='', plot=False, *args, **kwargs):
+        if type(paths) is dict:
+            avg_success = np.mean([np.any(roll['env_infos']['goal_reached']) for p in paths.values() for roll in p])
+            logger.record_tabular('NumPathsLog', len([roll for p in paths.values() for roll in p]))
+        else:
+            avg_success = np.mean([np.any(p['env_infos']['goal_reached']) for p in paths])
+            logger.record_tabular('NumPathsLog', len(paths))
+        logger.record_tabular('AverageSuccess', avg_success)
+        if plot:
+            self.log_diagnostics_2(postupdate_paths=paths, *args, **kwargs)
 
     def log_diagnostics_2(self, postupdate_paths, demos=None, preupdate_paths=None, all_updates_paths=None, prefix='',
                         report=None, policy=None, goals=None):
@@ -105,21 +121,27 @@ class PointEnvRandGoal(Env, Serializable):
         num_envs = len(postupdate_paths)
         avg_postupdate_rewards = [None] * num_envs
         avg_postupdate_success = [None] * num_envs
+        avg_postupdate_len = [None] * num_envs
         avg_preupdate_rewards = [None] * num_envs
         avg_preupdate_success = [None] * num_envs
+        avg_preupdate_len = [None] * num_envs
         avg_improvement_rewards = [None] * num_envs
         avg_improvement_success = [None] * num_envs
         avg_demo_rewards = [None] * num_envs
         avg_demo_success = [None] * num_envs
+        avg_demo_len = [None] * num_envs
         for ind in range(num_envs):
             avg_postupdate_rewards[ind] = np.mean([np.sum(p['rewards']) for p in postupdate_paths[ind]])
             avg_postupdate_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in postupdate_paths[ind]])
+            avg_postupdate_len[ind] = np.mean([len(p['rewards']) for p in postupdate_paths[ind]])
             if demos is not None:
                 avg_demo_rewards[ind] = np.mean([np.sum(p['rewards']) for p in demos[ind]])
                 avg_demo_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in demos[ind]])
+                avg_demo_len[ind] = np.mean([len(p['rewards']) for p in demos[ind]])
             if preupdate_paths is not None:
                 avg_preupdate_rewards[ind] = np.mean([np.sum(p['rewards']) for p in preupdate_paths[ind]])
                 avg_preupdate_success[ind] = np.mean([np.any(p['env_infos']['goal_reached']) for p in preupdate_paths[ind]])
+                avg_preupdate_len[ind] = np.mean([len(p['rewards']) for p in preupdate_paths[ind]])
                 avg_improvement_rewards[ind] = avg_postupdate_rewards[ind] - avg_preupdate_rewards[ind]
                 avg_improvement_success[ind] = avg_postupdate_success[ind] - avg_preupdate_success[ind]
 
@@ -137,13 +159,16 @@ class PointEnvRandGoal(Env, Serializable):
         for ind in range(min(5, num_envs)):
             summary_text = ''
             if avg_preupdate_rewards[0] is not None:
-                summary_text += 'Avg Preupdate Rew: {:.2f}, Avg Preupdate Success:{:.2f}\n'.format(np.mean(avg_preupdate_rewards),
-                                                                                                   np.mean(avg_preupdate_success))
-            summary_text += 'Avg Postupdate Rew: {:.2f}, Avg Post Success:{:.2f}\n'.format(np.mean(avg_postupdate_rewards),
-                                                                                          np.mean(avg_postupdate_success))
+                summary_text += 'AvgPreRew: {:.2f}, AvgPreSucc: {:.2f}, AvgLen: {:.2f}\n'.format(np.mean(avg_preupdate_rewards),
+                                                                                                   np.mean(avg_preupdate_success),
+                                                                                                  np.mean(avg_preupdate_len))
+            summary_text += 'AvgPostRew: {:.2f}, AvgPostSucc: {:.2f}, AvgLen: {:.2f}\n'.format(np.mean(avg_postupdate_rewards),
+                                                                                          np.mean(avg_postupdate_success),
+                                                                                           np.mean(avg_postupdate_len))
             if avg_demo_rewards[0] is not None:
-                summary_text += 'Avg Demo Rew: {:.2f}, Avg Demo Success:{:.2f}\n'.format(np.mean(avg_demo_rewards),
-                                                                                         np.mean(avg_demo_success))
+                summary_text += 'AvgDemRew: {:.2f}, AvgDemSucc: {:.2f}, AvgLen: {:.2f}\n'.format(np.mean(avg_demo_rewards),
+                                                                                         np.mean(avg_demo_success),
+                                                                                         np.mean(avg_demo_len))
             goal = postupdate_paths[ind][0]['env_infos']['goal'][0]
             post_obs = postupdate_paths[ind][0]['observations']
             demo_obs = None
@@ -191,9 +216,10 @@ class PointEnvRandGoal(Env, Serializable):
             report.add_image(vec_img, summary_text)
         plt.close('all')
 
-class StraightDemo(Policy, Serializable):
+
+class StraightDemo(Policy):  # , Serializable):
     def __init__(self, *args, **kwargs):
-        Serializable.quick_init(self, locals())
+        # Serializable.quick_init(self, locals())
         super(StraightDemo, self).__init__(*args, **kwargs)
 
     @overrides
@@ -239,7 +265,6 @@ def plot_policy_means(policy, env, bounds=None, report=None, num_samples=10, goa
     #                 state in states]  # in case we need to append goal for the policy
     means = []
     log_stds = []
-    # import pdb; pdb.set_trace()
     for state in states:
         actions, agent_info = policy.get_action([state] * len(goals), idx=idxs)
         means.append(agent_info['mean'])
