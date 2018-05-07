@@ -1,6 +1,3 @@
-
-
-
 from rllab.misc import ext
 from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger

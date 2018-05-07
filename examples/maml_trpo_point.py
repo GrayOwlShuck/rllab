@@ -28,7 +28,7 @@ use_sensitive = True
 for fast_learning_rate in fast_learning_rates:
     for learning_rate in learning_rates:
         for bas in baselines:
-            stub(globals())
+            # stub(globals())
 
             env = TfEnv(normalize(PointEnvRandGoal()))
             policy = SensitiveGaussianMLPPolicy(
@@ -60,13 +60,15 @@ for fast_learning_rate in fast_learning_rates:
             )
             for s in range(0, 50, 10):
                 run_experiment_lite(
-                    algo.train(),
-                    n_parallel=4,
+                    use_cloudpickle=True,
+                    stub_method_call=algo.train,
+                    n_parallel=0,
                     snapshot_mode="last",
                     seed=s,
+                    mode='local',
                     exp_prefix='vpg_sensitive_point100',
                     exp_name='tf1lfd-trposens' + str(int(use_sensitive)) + '_fbs' + str(fast_batch_size) + '_mbs' + str(
                         meta_batch_size) + '_flr_' + str(fast_learning_rate) + 'metalr_' + str(
                         meta_step_size) + '_step1' + str(num_grad_updates) + '_s' + str(s),
-                    plot=False,
+                    # plot=False,
                 )

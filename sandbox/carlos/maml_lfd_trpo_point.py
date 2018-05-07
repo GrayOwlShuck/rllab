@@ -63,10 +63,12 @@ vg.add('fast_learning_rate', [0.05])  # 0.08 is already too large, and even 0.05
 vg.add('use_meta', [True])  # if False it won't update the initial params from one itr to the next
 vg.add('meta_itr', lambda use_meta: [50] if use_meta else [1])
 vg.add('meta_step_size', [0.01])
-vg.add('meta_batch_size', [40])  # 10 works but much less stable, 20 is fairly stable, 40 is more stable --> n_env!!!!
+vg.add('fix_goal', [True])
+vg.add('meta_batch_size', lambda fix_goal: [1] if fix_goal else [40])  # 10 works but much less stable, 20 is fairly stable, 40 is more stable --> n_env!!!!
+vg.add('goal', [(6, 6)])
 # env
-vg.add('env_noise', [0, 0.1])
-vg.add('tolerance', [0.1])
+vg.add('env_noise', [0.1, 0])
+vg.add('tolerance', [0.5])
 vg.add('seed', range(0, 20, 10))
 EXPERIMENT_TYPE = osp.basename(__file__).split('.')[0]
 
@@ -80,7 +82,10 @@ def run_task(v):
     report.add_text(format_dict(v))
     report.save()
 
-    env = TfEnv(normalize(PointEnvRandGoal(noise=v['env_noise'], tolerance=v['tolerance'])))
+    env = TfEnv(normalize(PointEnvRandGoal(noise=v['env_noise'],
+                                           goal=v['goal'],
+                                           fix_goal=v['fix_goal'],
+                                           tolerance=v['tolerance'])))
     policy = SensitiveLfdGaussianMLPPolicy(
         name="policy",
         env_spec=env.spec,
