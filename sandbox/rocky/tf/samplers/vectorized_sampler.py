@@ -21,6 +21,7 @@ class VectorizedSampler(BaseSampler):
         super(VectorizedSampler, self).__init__(algo, policy=policy)
         self.n_envs = n_envs
         self.batch_size = batch_size
+        self.vec_env = None
         if batch_size is None:
             self.batch_size = algo.batch_size
 
@@ -31,6 +32,9 @@ class VectorizedSampler(BaseSampler):
             return super(VectorizedSampler, self).process_samples(*args, **kwargs)
 
     def start_worker(self):
+        if self.vec_env is not None:
+            print("vec_env already started, no need to re-pickle")
+            return
         print('starting worker for n_env=', self.n_envs)
         n_envs = self.n_envs
         if n_envs is None:
@@ -141,7 +145,7 @@ class VectorizedSampler(BaseSampler):
         logger.record_tabular("EnvExecTime", env_time)
         logger.record_tabular("ProcessExecTime", process_time)
 
-        if not return_dict:  # this forgets which paths came from what env!
+        if not return_dict:  # this forgets which paths came from what env! Hence returns usual paths (not dict)
             flatten_list = lambda l: [item for sublist in l for item in sublist]
             paths = flatten_list(paths.values())
             #path_keys = flatten_list([[key]*len(paths[key]) for key in paths.keys()])
