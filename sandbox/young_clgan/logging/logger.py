@@ -11,7 +11,7 @@ class AttrDict(dict):
 
 class ExperimentLogger(object):
     def __init__(self, base_dir, itr=None, snapshot_mode='all', text_file='debug.log',
-                 tabular_file='progress.csv', snapshot_gap=1, hold_outter_log=False):
+                 tabular_file='progress.csv', snapshot_gap=1, hold_outter_log=False, hold_inner_log=False):
         """
         :param base_dir:
         :param itr:
@@ -21,6 +21,8 @@ class ExperimentLogger(object):
         :param snapshot_gap:
         :param outter_tabular:
         :param outter_text:
+        :param hold_inner_log: if True --> next time this context is called, it append to existing tabular files exist
+                               if False --> overwrites
         """
 
         if itr is not None:
@@ -32,6 +34,7 @@ class ExperimentLogger(object):
         self.snapshot_mode = snapshot_mode
         self.snapshot_gap = snapshot_gap
         self.hold_outter_log = hold_outter_log
+        self.hold_inner_log = hold_inner_log
 
     def __enter__(self):
         self.prev_snapshot_dir = rllab.misc.logger.get_snapshot_dir()
@@ -41,7 +44,7 @@ class ExperimentLogger(object):
             self.prev_tabular_file = rllab.misc.logger._tabular_outputs[0]
             self.prev_text_file = rllab.misc.logger._text_outputs[0]
             rllab.misc.logger.hold_tabular_output(self.prev_tabular_file)
-            rllab.misc.logger.remove_text_output(self.prev_text_file)
+            rllab.misc.logger.remove_text_output(self.prev_text_file)  # the default is already 'a' for text (no hold)
         rllab.misc.logger.add_text_output(self.text_file)
         rllab.misc.logger.add_tabular_output(self.tabular_file)
         rllab.misc.logger.set_snapshot_dir(self.log_dir)
@@ -55,6 +58,8 @@ class ExperimentLogger(object):
             rllab.misc.logger.add_text_output(self.prev_text_file)
         rllab.misc.logger.set_snapshot_mode(self.prev_mode)
         rllab.misc.logger.set_snapshot_dir(self.prev_snapshot_dir)
+        if self.hold_inner_log:
+            rllab.misc.logger.hold_tabular_output(self.tabular_file)
         rllab.misc.logger.remove_tabular_output(self.tabular_file)
         rllab.misc.logger.remove_text_output(self.text_file)
 
