@@ -12,6 +12,7 @@ class VecEnvExecutor(object):
         self.max_path_length = max_path_length
 
     def step(self, action_n):
+        # import pdb; pdb.set_trace()
         all_results = [env.step(a) for (a, env) in zip(action_n, self.envs)]
         obs, rewards, dones, env_infos = list(map(list, list(zip(*all_results))))
         dones = np.asarray(dones)
@@ -25,7 +26,7 @@ class VecEnvExecutor(object):
         #         self.ts[i] = 0
         return obs, rewards, dones, tensor_utils.stack_tensor_dict_list(env_infos)
 
-    def reset(self, dones=None, *reset_args, **reset_kwargs):
+    def reset(self, dones=None, force_expand=False, *reset_args, **reset_kwargs):
         # if not specify the dones, reset all the envs
         if dones is None:
             dones = [True] * self.num_envs
@@ -43,7 +44,8 @@ class VecEnvExecutor(object):
         # if the reset args are not list of dirs, we set the same args for each env
         expanded_reset_kwargs = [{} for _ in range(self.num_envs)]
         for kw, val in reset_kwargs.items():
-            if not hasattr(val, '__len__') or len(val) != self.num_envs:
+            if not hasattr(val, '__len__') or len(val) != self.num_envs \
+                    or force_expand:  # if len num_envs use force_expand!
                 for env_idx in range(self.num_envs):
                     expanded_reset_kwargs[env_idx][kw] = val
             else:
