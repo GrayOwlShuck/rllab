@@ -40,7 +40,6 @@ class BatchPolopt(RLAlgorithm):
             sampler_args=None,
             force_batch_sampler=False,
             load_policy=None,
-            reset_arg=None,
             **kwargs
     ):
         """
@@ -91,7 +90,6 @@ class BatchPolopt(RLAlgorithm):
         if sampler_args is None:
             sampler_args = dict()
         self.sampler = sampler_cls(self, **sampler_args)
-        self.reset_arg = reset_arg
 
     def start_worker(self):
         self.sampler.start_worker()
@@ -101,8 +99,8 @@ class BatchPolopt(RLAlgorithm):
     def shutdown_worker(self):
         self.sampler.shutdown_worker()
 
-    def obtain_samples(self, itr, **reset_kwargs):  #todo: remove reset_args from self of the algo!!
-        return self.sampler.obtain_samples(itr, reset_args=self.reset_arg, **reset_kwargs)
+    def obtain_samples(self, itr, **reset_kwargs):
+        return self.sampler.obtain_samples(itr, reset_args=None, **reset_kwargs)
 
     def process_samples(self, itr, paths):
         return self.sampler.process_samples(itr, paths)
