@@ -72,7 +72,7 @@ def rollout_demo(env, agent, max_path_length=np.inf, animated=False, speedup=1, 
     if animated:
         env.render()
     while path_length < max_path_length:
-        a, agent_info = agent.get_action(o, env.objective_params)
+        a, agent_info = agent.get_action(o, env.objective_params)  # main change: access to objective_params of env!!
         next_o, r, d, env_info = env.step(a)
         observations.append(env.observation_space.flatten(o))
         rewards.append(r)

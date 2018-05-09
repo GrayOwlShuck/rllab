@@ -63,7 +63,7 @@ class PointEnvRandGoal(Env):  #, Serializable):
             self._goal = None
         if objective_params is not None and not self._fix_goal:
             # print("using given goal: ", objective_params)
-            self._goal = objective_params
+            self.set_objective_params(objective_params)
         elif self._goal is None:  # I will allow to rest if there is no goal
             # print("the goal was None so I resample a random")
             # Only set a new goal if this env hasn't had one defined before or if it has been cleaned
